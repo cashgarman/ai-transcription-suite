@@ -55,6 +55,7 @@ output/
 models/
 
 # Logs
+logs/
 *.log
 
 # Local configuration

@@ -1,25 +1,47 @@
 # Transcript Requirements Summarizer
 
-A Python application that analyzes transcripts and extracts key requirements or points, presented as a numbered list. It uses the Gemma3:1b model via Ollama for local processing. The application comes with both GUI and CLI interfaces.
+A Python application that transcribes MP4 videos and produces detailed Markdown summaries of conversations using local AI. Summarization uses Qwen 3.5 9B via Ollama (~7 GB VRAM). Transcription uses OpenAI Whisper locally.
 
 ## Features
 
-- Summarize transcripts into structured requirements lists
+- Summarize transcripts into detailed Markdown documents that preserve conversation details
+- Transcribe MP4 videos to text using local Whisper (GPU-accelerated when CUDA is available)
+- Select video via file browser or drag-and-drop onto the input area
+- Choose Whisper model quality (tiny through large) before transcribing
+- Progress bar with elapsed time, estimated time remaining, and verbose log output
+- Working cancel button during video transcription
 - Modern dark-themed GUI for interactive use
-- Command-line interface for batch processing and automation
-- Local processing using Gemma3:1b via Ollama
+- Local processing — no cloud APIs required
 - Thread-safe design to keep the UI responsive during processing
 
 ## Prerequisites
 
 - Python 3.8 or higher
-- [Ollama](https://ollama.ai/) installed and running
-- Gemma3:1b model available in Ollama (will be automatically pulled if missing)
+- [Ollama](https://ollama.ai/) installed and running (for summarization)
+- [ffmpeg](https://ffmpeg.org/download.html) installed and available on your `PATH` (for video audio extraction)
+- Qwen 3.5 9B (`qwen3.5:9b`) via Ollama for summarization (~7 GB VRAM; fits 10 GB GPUs)
+- Optional but recommended: NVIDIA GPU with CUDA for faster Whisper transcription
 
 ### Installing Ollama
 
 1. Download and install Ollama from [https://ollama.ai/download](https://ollama.ai/download)
-2. Run Ollama (it needs to be running in the background when using this application)
+2. Run Ollama (it needs to be running in the background when using summarization)
+
+### Installing ffmpeg
+
+1. Download ffmpeg from [https://ffmpeg.org/download.html](https://ffmpeg.org/download.html)
+2. Ensure `ffmpeg` and `ffprobe` are on your system `PATH`
+3. Verify with: `ffmpeg -version`
+
+### GPU acceleration (optional)
+
+Whisper uses PyTorch and will automatically use CUDA when available. For NVIDIA GPUs, install a CUDA-enabled PyTorch build after the base requirements:
+
+```
+pip install torch --index-url https://download.pytorch.org/whl/cu121
+```
+
+If CUDA is not available, transcription falls back to CPU with a warning in the log.
 
 ## Installation
 
@@ -38,12 +60,12 @@ python -m venv venv_summarizer
 5. Install the required packages:
 
 ```
-pip install customtkinter ollama
+pip install -r requirements.txt
 ```
 
-## Usage
+6. (Optional) Install CUDA-enabled PyTorch for GPU transcription — see above.
 
-### GUI Application
+## Usage
 
 1. Run the application using one of these methods:
 
@@ -56,49 +78,36 @@ summarize_gui.bat
 ```
 
 2. Use the application:
-   - Enter text directly or click "Load Transcript" to load a text file
-   - Click "Summarize" to process the transcript
-   - View the generated requirements list in the output area
 
-### Command Line Interface
+**Transcribe a video:**
+- Choose a Whisper model from the dropdown (smaller = faster, larger = more accurate)
+- Click **Select Video** or drag-and-drop an `.mp4` onto the input area
+- Click **Transcribe Video** to extract audio and run speech-to-text
+- Watch the progress bar, elapsed/remaining time, and log output
+- Click **Cancel** to stop an in-progress transcription
+- The transcript appears in the Input Transcript text box when complete
 
-The application can also be used from the command line:
+**Summarize a transcript:**
+- Enter text directly, load a `.txt` file, or transcribe a video first
+- Click **Summarize** to produce a detailed Markdown summary of the conversation
+- View the generated Markdown in the output area
 
-```
-# Using Python directly (requires activating the virtual environment first)
-python summarize.py input_file [--output OUTPUT_FILE] [--max-tokens MAX_TOKENS]
-
-# Using the batch file (automatically activates the virtual environment)
-summarize.bat input_file [--output OUTPUT_FILE] [--max-tokens MAX_TOKENS]
-```
-
-Arguments:
-- `input_file`: Path to the transcript file to summarize (required)
-- `--output`: Path to save the summary (optional, prints to console if not specified)
-- `--max-tokens`: Maximum tokens for the summary (default: 2048)
-
-Examples:
-```
-# Summarize a transcript and print to console
-summarize.bat my_transcript.txt
-
-# Summarize a transcript and save to a file
-summarize.bat my_transcript.txt --output requirements.txt
-
-# Customize the maximum tokens for the summary
-summarize.bat my_transcript.txt --max-tokens 1024
-```
+A sample transcript is included in `example_transcript.txt` for testing.
 
 ## Structure
 
-- `/src` - Core application source code
-- `/Transcriber` - The original audio/video transcription tool
+- `summarize_gui.py` - Application entry point
+- `src/summarizer.py` - GUI and summarization logic
+- `src/transcription.py` - Whisper transcription engine (chunked, GPU-aware)
+- `logs/transcription.log` - Verbose transcription log (created at runtime)
+- `example_transcript.txt` - Sample transcript for testing
 
 ## Notes
 
-- The first run will download the Gemma3:1b model if it's not already available in Ollama
-- Summarization quality depends on the clarity and structure of the input transcript
-- For best results, ensure Ollama is running with adequate resources (especially for longer transcripts)
+- The first Whisper run downloads model weights (~75 MB to ~3 GB depending on model size)
+- Long videos are processed in 10-minute chunks to support cancellation and reduce memory use
+- The first Ollama run downloads the `qwen3.5:9b` model if it is not already available (~6.6 GB)
+- Long transcripts are summarized in chunks and merged to preserve detail across the full conversation
 
 ## License
 
@@ -107,5 +116,6 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 ## Acknowledgments
 
 - [Ollama](https://ollama.ai/) for local AI model serving
-- [Gemma3](https://ai.google.dev/gemma) from Google for the underlying language model
-- [CustomTkinter](https://github.com/TomSchimansky/CustomTkinter) for the modern UI 
+- [Qwen](https://github.com/QwenLM) for the summarization model
+- [OpenAI Whisper](https://github.com/openai/whisper) for local speech-to-text
+- [CustomTkinter](https://github.com/TomSchimansky/CustomTkinter) for the modern UI
