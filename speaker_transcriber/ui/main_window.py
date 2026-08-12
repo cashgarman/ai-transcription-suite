@@ -178,10 +178,33 @@ class MainWindow(QMainWindow):
         self._rebuild_recent_files_menu()
 
         file_menu.addSeparator()
+        reload_prompts_action = QAction("Reload System Prompts", self)
+        reload_prompts_action.triggered.connect(self._reload_system_prompts)
+        file_menu.addAction(reload_prompts_action)
+
+        file_menu.addSeparator()
         quit_action = QAction("&Quit", self)
         quit_action.setShortcut(QKeySequence.StandardKey.Quit)
         quit_action.triggered.connect(self.close)
         file_menu.addAction(quit_action)
+
+    def _reload_system_prompts(self) -> None:
+        from speaker_transcriber.prompts import prompts_dir, reload_prompts
+
+        try:
+            loaded = reload_prompts()
+        except Exception as exc:
+            QMessageBox.warning(
+                self,
+                "Reload failed",
+                f"Could not reload system prompts:\n{exc}",
+            )
+            return
+        QMessageBox.information(
+            self,
+            "Prompts reloaded",
+            f"Reloaded {len(loaded)} prompt(s) from:\n{prompts_dir()}",
+        )
 
     def _rebuild_recent_files_menu(self) -> None:
         self.recent_files_menu.clear()

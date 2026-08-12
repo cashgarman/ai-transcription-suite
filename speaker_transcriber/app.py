@@ -73,6 +73,11 @@ def main() -> int:
                 logger = configure_logging(gui_queue=log_queue)
                 log_system_information(logger)
 
+                self.status.emit("Loading system prompts…", 0.6)
+                from speaker_transcriber.prompts import load_prompts
+
+                load_prompts()
+
                 self.status.emit("Loading interface…", 0.75)
                 from speaker_transcriber.ui.main_window import MainWindow
 

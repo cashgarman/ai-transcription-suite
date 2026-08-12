@@ -1,0 +1,1 @@
+Combine these section summaries into one cohesive Markdown document. Keep every detail, remove only duplication, and use one top-level title.

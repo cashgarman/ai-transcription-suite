@@ -35,6 +35,9 @@ speaker-transcriber-gui = "speaker_transcriber.app:main"
 [tool.setuptools.packages.find]
 include = ["speaker_transcriber*"]
 
+[tool.setuptools.package-data]
+speaker_transcriber = ["prompts/*.txt"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"

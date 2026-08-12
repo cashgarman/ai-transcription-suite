@@ -25,6 +25,12 @@ datas = (
     collect_data_files("whisperx")
     + collect_data_files("pyannote.audio")
     + collect_data_files("faster_whisper")
+    + [
+        (
+            str(project_root / "speaker_transcriber" / "prompts"),
+            "speaker_transcriber/prompts",
+        )
+    ]
 )
 binaries = collect_dynamic_libs("ctranslate2") + collect_dynamic_libs("torch")
 
