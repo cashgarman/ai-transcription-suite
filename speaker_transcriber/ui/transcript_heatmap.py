@@ -20,6 +20,7 @@ class TranscriptTimelineHeatmap(QWidget):
         self._result: TranscriptResult | None = None
         self._colors: dict[str, str] = {}
         self._selected_speaker: str | None = None
+        self._speaker_filter: str | None = None
         self._scroll_fraction = 0.0
         self._viewport_fraction = 1.0
         self.setToolTip("Speaker activity along the transcript timeline")
@@ -27,10 +28,17 @@ class TranscriptTimelineHeatmap(QWidget):
     def set_result(self, result: TranscriptResult | None) -> None:
         self._result = result
         self._colors = speaker_color_map(result) if result else {}
+        if result is None:
+            self._speaker_filter = None
+            self._selected_speaker = None
         self.update()
 
     def set_selected_speaker(self, speaker_id: str | None) -> None:
         self._selected_speaker = speaker_id
+        self.update()
+
+    def set_speaker_filter(self, speaker_id: str | None) -> None:
+        self._speaker_filter = speaker_id
         self.update()
 
     def set_scroll_state(self, scroll_fraction: float, viewport_fraction: float) -> None:
@@ -65,6 +73,11 @@ class TranscriptTimelineHeatmap(QWidget):
             return None
         seconds = (y / max(self.height(), 1)) * duration
         for segment in self._result.segments:
+            if (
+                self._speaker_filter is not None
+                and segment.speaker != self._speaker_filter
+            ):
+                continue
             if segment.start <= seconds <= segment.end:
                 return (segment.start, segment.end, segment.speaker)
         return None
@@ -82,15 +95,20 @@ class TranscriptTimelineHeatmap(QWidget):
 
         height = rect.height()
         for segment in self._result.segments:
-            is_selected = segment.speaker == self._selected_speaker
-            if self._selected_speaker is not None and not is_selected:
+            if self._speaker_filter is not None:
+                if segment.speaker != self._speaker_filter:
+                    continue
+            elif (
+                self._selected_speaker is not None
+                and segment.speaker != self._selected_speaker
+            ):
                 continue
             color = QColor(self._colors.get(segment.speaker, "#B0BEC5"))
-            if self._selected_speaker is None:
+            if self._selected_speaker is None and self._speaker_filter is None:
                 color.setAlpha(140)
             painter.fillRect(*self._segment_rect(segment.start, segment.end, height), color)
 
-        if self._selected_speaker is not None:
+        if self._selected_speaker is not None and self._speaker_filter is None:
             painter.setPen(QPen(QColor(Theme.BORDER), 1))
             for segment in self._result.segments:
                 if segment.speaker == self._selected_speaker:

@@ -375,7 +375,7 @@ def _stylesheet() -> str:
     }}
 
     QMenu::item {{
-        padding: 7px 18px;
+        padding: 7px 18px 7px 32px;
         border-radius: 6px;
     }}
 
@@ -386,6 +386,24 @@ def _stylesheet() -> str:
 
     QMenu::item:disabled {{
         color: {Theme.TEXT_MUTED};
+    }}
+
+    QMenu::indicator {{
+        width: 16px;
+        height: 16px;
+        left: 8px;
+    }}
+
+    QMenu::indicator:non-exclusive:unchecked {{
+        border: 1px solid {Theme.BORDER};
+        border-radius: 4px;
+        background: {Theme.SURFACE_SUNKEN};
+    }}
+
+    QMenu::indicator:non-exclusive:checked {{
+        border: 1px solid {Theme.ACCENT};
+        border-radius: 4px;
+        background: {Theme.ACCENT};
     }}
 
     QMenu::separator {{
@@ -499,6 +517,21 @@ def _stylesheet() -> str:
 
     QWidget#collapsibleContent {{
         background: transparent;
+    }}
+
+    QWidget#textSearchBar QLabel#searchMatchStatus {{
+        color: {Theme.TEXT_MUTED};
+        background: transparent;
+        padding: 0 4px;
+    }}
+
+    QWidget#textSearchBar QLabel#searchMatchStatus[kind="empty"] {{
+        color: {Theme.DANGER};
+    }}
+
+    QWidget#textSearchBar QToolButton {{
+        min-width: 48px;
+        padding: 5px 10px;
     }}
 
     QToolButton {{

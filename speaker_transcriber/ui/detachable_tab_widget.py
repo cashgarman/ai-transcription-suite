@@ -164,7 +164,7 @@ class DetachableTabWidget(QTabWidget):
 
     def ensure_visible(self, content: QWidget) -> None:
         """Bring a tab's content to the front, docked or floating."""
-        entry = self._entry_for_content(content)
+        entry = self._entry_for_widget(content)
         if entry is None:
             self.setCurrentWidget(content)
             return
@@ -179,6 +179,15 @@ class DetachableTabWidget(QTabWidget):
         else:
             hint = f"Double-click to open {entry.title} in its own window."
         self.setTabToolTip(index, hint)
+
+    def _entry_for_widget(self, widget: QWidget | None) -> _TabEntry | None:
+        current = widget
+        while current is not None:
+            entry = self._entry_for_content(current)
+            if entry is not None:
+                return entry
+            current = current.parentWidget()
+        return None
 
     def _entry_for_content(self, content: QWidget) -> _TabEntry | None:
         for entry in self._entries.values():

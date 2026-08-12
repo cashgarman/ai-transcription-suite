@@ -88,6 +88,7 @@ from speaker_transcriber.ui.input_timeline import InputTimelineWidget
 from speaker_transcriber.ui.notification import NotificationBanner
 from speaker_transcriber.ui.ollama_model_combo import OllamaModelComboBox
 from speaker_transcriber.ui.settings_dialog import SettingsDialog
+from speaker_transcriber.ui.text_search import SearchableTextPanel
 from speaker_transcriber.ui.transcript_panel import TranscriptPanel
 from speaker_transcriber.ui.worker import (
     OllamaModelListWorker,
@@ -172,6 +173,7 @@ class MainWindow(QMainWindow):
         self._pdf_streaming_summary = False
         self.started_at = 0.0
         self._speaker_rename_pending = False
+        self._filtered_speaker: str | None = None
         self._autoload_in_progress = False
         self.setAcceptDrops(True)
         self.setWindowTitle("Summit")
@@ -518,12 +520,16 @@ class MainWindow(QMainWindow):
         summary_font.setPointSize(12)
         self.summary_view.setFont(summary_font)
         self.summary_view.setAcceptRichText(True)
+        self.summary_panel = SearchableTextPanel(
+            self.summary_view,
+            placeholder="Search summary…",
+        )
         self.tabs.add_detachable_tab(
             self.transcript_panel,
             "Transcript",
             tab_id="transcript",
         )
-        self.tabs.add_detachable_tab(self.summary_view, "Summary", tab_id="summary")
+        self.tabs.add_detachable_tab(self.summary_panel, "Summary", tab_id="summary")
         splitter.addWidget(self.tabs)
 
         speaker_panel = QWidget()
@@ -626,6 +632,7 @@ class MainWindow(QMainWindow):
 
         self.setCentralWidget(central)
         self._bind_speaker_nav_shortcuts()
+        self._bind_find_shortcut()
         self._update_cache_controls()
 
     @staticmethod
@@ -1008,14 +1015,12 @@ class MainWindow(QMainWindow):
         self.settings.model = options.model
         self.settings.language = options.language
         self._persist_speaker_settings()
-        self.result = None
-        self.transcript_panel.clear()
-        self.summary_view.clear()
-        self.summary_markdown = ""
+        self._clear_result_ui()
         self.progress_bar.setValue(0)
         self.started_at = time.monotonic()
         self.elapsed_timer.start(1000)
         self._set_busy(True)
+        QApplication.processEvents()
         self.worker = ProcessingWorker(
             [str(path) for path in sources],
             options,
@@ -1130,8 +1135,19 @@ class MainWindow(QMainWindow):
             return
         self.speaker_name_store.save(source_paths, self.result.speakers)
 
+    def _clear_result_ui(self) -> None:
+        self.result = None
+        self._filtered_speaker = None
+        self.summary_markdown = ""
+        self.transcript_panel.clear()
+        self.summary_view.clear()
+        self.summary_panel.clear_search()
+        self._populate_speaker_table()
+
     def _show_result(self, sources: list[Path] | None = None) -> None:
         self._apply_session_speaker_names(sources)
+        self._filtered_speaker = None
+        self.transcript_panel.set_speaker_filter(None)
         self.transcript_panel.set_result(self.result)
         self._populate_speaker_table()
         self.transcript_panel.highlight_speaker(None)
@@ -1201,6 +1217,18 @@ class MainWindow(QMainWindow):
             shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
             shortcut.activated.connect(callback)
 
+    def _bind_find_shortcut(self) -> None:
+        shortcut = QShortcut(QKeySequence.StandardKey.Find, self)
+        shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
+        shortcut.activated.connect(self._focus_current_tab_search)
+
+    def _focus_current_tab_search(self) -> None:
+        current = self.tabs.currentWidget()
+        if current is self.transcript_panel:
+            self.transcript_panel.focus_search()
+        elif current is self.summary_panel:
+            self.summary_panel.focus_search()
+
     def _goto_speaker_entry(self, delta: int, *, from_shortcut: bool = False) -> None:
         if from_shortcut and self._speaker_nav_shortcuts_blocked():
             return
@@ -1233,10 +1261,29 @@ class MainWindow(QMainWindow):
         if not label:
             return
         menu = QMenu(self)
+        filter_action = QAction(f"Filter by {label}", menu)
+        filter_action.setCheckable(True)
+        filter_action.setChecked(self._filtered_speaker == label)
+        filter_action.setToolTip(
+            "Show only this speaker's entries in the transcript"
+        )
+        menu.addAction(filter_action)
+        menu.addSeparator()
         remove_action = menu.addAction(f"Remove {label} and their transcript entries")
         chosen = menu.exec(self.speaker_table.viewport().mapToGlobal(position))
-        if chosen is remove_action:
+        if chosen is filter_action:
+            self._set_speaker_filter(label if filter_action.isChecked() else None)
+        elif chosen is remove_action:
             self._remove_speaker(label)
+
+    def _set_speaker_filter(self, speaker_id: str | None) -> None:
+        self._filtered_speaker = speaker_id
+        self.transcript_panel.set_speaker_filter(speaker_id)
+        if speaker_id:
+            self.tabs.ensure_visible(self.transcript_panel)
+            self.transcript_panel.highlight_speaker(speaker_id)
+            return
+        self.transcript_panel.highlight_speaker(self._selected_speaker_label())
 
     def _remove_speaker(self, speaker_id: str) -> None:
         if self.result is None:
@@ -1254,6 +1301,9 @@ class MainWindow(QMainWindow):
         if answer != QMessageBox.StandardButton.Yes:
             return
         self.result.remove_speaker(speaker_id)
+        if self._filtered_speaker == speaker_id:
+            self._filtered_speaker = None
+            self.transcript_panel.set_speaker_filter(None)
         try:
             self.transcript_cache.save(self.result)
         except OSError as exc:
@@ -1264,6 +1314,7 @@ class MainWindow(QMainWindow):
             self.log_output.appendPlainText(f"Failed to save speaker names: {exc}")
         self._populate_speaker_table()
         self.transcript_panel.set_result(self.result)
+        self.transcript_panel.set_speaker_filter(self._filtered_speaker)
         self.transcript_panel.highlight_speaker(None)
         self.export_button.setEnabled(True)
         self.export_pdf_button.setEnabled(True)
@@ -1479,6 +1530,7 @@ class MainWindow(QMainWindow):
                 self.result.speakers[label_item.text()] = name_item.text().strip()
         if not save_only:
             self.transcript_panel.set_result(self.result)
+            self.transcript_panel.set_speaker_filter(self._filtered_speaker)
             self._apply_speaker_name_colors()
             if selected_speaker:
                 for row in range(self.speaker_table.rowCount()):

@@ -13,6 +13,7 @@ from PySide6.QtWidgets import QTextEdit
 
 from speaker_transcriber.export.common import clock_timestamp, display_speaker, speaker_color_map
 from speaker_transcriber.pipeline.types import TranscriptResult
+from speaker_transcriber.ui.text_search import TextFinder
 from speaker_transcriber.ui.theme import Theme
 
 
@@ -29,9 +30,12 @@ class TranscriptView(QTextEdit):
         super().__init__(parent)
         self.setAcceptRichText(True)
         self.setPlaceholderText("The speaker-labelled transcript will appear here.")
+        self._result: TranscriptResult | None = None
+        self._speaker_filter: str | None = None
         self._speaker_colors: dict[str, str] = {}
         self._highlighted_speaker: str | None = None
         self._active_entry_start: float | None = None
+        self._finder = TextFinder()
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
         speaker_id = self._highlighted_speaker
@@ -53,12 +57,29 @@ class TranscriptView(QTextEdit):
         super().keyPressEvent(event)
 
     def set_result(self, result: TranscriptResult | None) -> None:
-        self.clear()
+        self._result = result
         self._highlighted_speaker = None
         self._active_entry_start = None
+        if result is None:
+            self._speaker_filter = None
+        self._render()
+
+    def set_speaker_filter(self, speaker_id: str | None) -> None:
+        if self._speaker_filter == speaker_id:
+            return
+        self._speaker_filter = speaker_id
+        self._render()
+        if self._highlighted_speaker is not None:
+            self._refresh_extra_selections()
+
+    def _render(self) -> None:
+        self.clear()
         self.setExtraSelections([])
         self._speaker_colors = {}
+        result = self._result
         if result is None:
+            self._finder.refresh(self.document())
+            self._refresh_extra_selections()
             return
 
         colors = speaker_color_map(result)
@@ -67,6 +88,11 @@ class TranscriptView(QTextEdit):
         first_segment = True
 
         for segment in result.segments:
+            if (
+                self._speaker_filter is not None
+                and segment.speaker != self._speaker_filter
+            ):
+                continue
             if first_segment:
                 first_segment = False
             else:
@@ -110,6 +136,9 @@ class TranscriptView(QTextEdit):
                 segment.end,
             )
 
+        self._finder.refresh(self.document())
+        self._refresh_extra_selections()
+
     @staticmethod
     def _tag_segment_blocks(
         start_block: QTextBlock,
@@ -147,15 +176,34 @@ class TranscriptView(QTextEdit):
         ):
             self._active_entry_start = data.start
             self._focus_block(best_block)
-            self._refresh_speaker_highlights()
+            self._refresh_extra_selections()
             return
         self._focus_block(best_block)
+
+    def set_search_query(self, query: str) -> tuple[int, int]:
+        self._finder.set_query(
+            self.document(),
+            query,
+            from_position=self.textCursor().position(),
+        )
+        self._refresh_extra_selections()
+        self._reveal_search_match()
+        return self.search_status()
+
+    def goto_search_match(self, delta: int) -> tuple[int, int]:
+        if self._finder.goto(delta) is not None:
+            self._refresh_extra_selections()
+            self._reveal_search_match()
+        return self.search_status()
+
+    def search_status(self) -> tuple[int, int]:
+        return self._finder.status()
 
     def highlight_speaker(self, speaker_id: str | None) -> None:
         self._highlighted_speaker = speaker_id
         if speaker_id is None:
             self._active_entry_start = None
-            self.setExtraSelections([])
+            self._refresh_extra_selections()
             return
 
         cursor_data = self.textCursor().block().userData()
@@ -166,7 +214,7 @@ class TranscriptView(QTextEdit):
             self._active_entry_start = cursor_data.start
         else:
             self._active_entry_start = None
-        self._refresh_speaker_highlights()
+        self._refresh_extra_selections()
 
     def _speaker_fill_color(self, speaker_id: str, *, active: bool) -> QColor:
         tint = QColor(self._speaker_colors.get(speaker_id, "#B0BEC5"))
@@ -181,11 +229,15 @@ class TranscriptView(QTextEdit):
             235 if active else 170,
         )
 
-    def _refresh_speaker_highlights(self) -> None:
+    def _refresh_extra_selections(self) -> None:
+        selections = self._speaker_extra_selections()
+        selections.extend(self._finder.extra_selections())
+        self.setExtraSelections(selections)
+
+    def _speaker_extra_selections(self) -> list[QTextEdit.ExtraSelection]:
         speaker_id = self._highlighted_speaker
         if speaker_id is None:
-            self.setExtraSelections([])
-            return
+            return []
 
         base_format = QTextCharFormat()
         base_format.setBackground(self._speaker_fill_color(speaker_id, active=False))
@@ -211,8 +263,16 @@ class TranscriptView(QTextEdit):
                 selection.format = active_format if is_active else base_format
                 selections.append(selection)
             block = block.next()
+        return selections
 
-        self.setExtraSelections(selections)
+    def _reveal_search_match(self) -> None:
+        match = self._finder.current_cursor()
+        if match is None:
+            return
+        cursor = QTextCursor(self.document())
+        cursor.setPosition(match.selectionStart())
+        self.setTextCursor(cursor)
+        self.ensureCursorVisible()
 
     def goto_adjacent_speaker_entry(self, speaker_id: str, delta: int) -> bool:
         anchors = self._speaker_entry_anchors(speaker_id)
@@ -252,7 +312,7 @@ class TranscriptView(QTextEdit):
         )
         self._highlighted_speaker = speaker_id
         self._focus_block(target)
-        self._refresh_speaker_highlights()
+        self._refresh_extra_selections()
         return True
 
     def _speaker_entry_anchors(self, speaker_id: str) -> list[QTextBlock]:
