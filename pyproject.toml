@@ -19,6 +19,7 @@ dependencies = [
     "torchaudio>=2.5",
     "nvidia-cudnn-cu12==8.9.7.29",
     "ollama>=0.4",
+    "reportlab>=4.2",
 ]
 
 [project.optional-dependencies]
@@ -36,7 +37,7 @@ speaker-transcriber-gui = "speaker_transcriber.app:main"
 include = ["speaker_transcriber*"]
 
 [tool.setuptools.package-data]
-speaker_transcriber = ["prompts/*.txt"]
+speaker_transcriber = ["prompts/*.txt", "assets/*.ico", "assets/fonts/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -1,1 +1,19 @@
-Combine these section summaries into one cohesive Markdown document. Keep every detail, remove only duplication, and use one top-level title.
+Combine these section summaries into one cohesive Markdown meeting document.
+Keep every detail, remove only duplication, and use this structure:
+
+1. `#` title
+2. Italic one-line meeting summary
+3. **Participants** — named people from the transcript (for example `Alex, Jordan, SPEAKER_03`),
+   not "Team members from design and engineering". Prefer display names when the transcript has them.
+4. **Primary topics**
+5. **Executive Summary** — several paragraphs covering the full discussion
+6. **Key Decisions and Direction** — numbered list
+7. Detailed `##` topic sections for the bulk of the document
+8. **Action Items** — Markdown table with columns Owner | Action | Priority
+9. **Open Questions**
+10. **Risks, Dependencies, and Blockers** — include mitigation when it was discussed
+11. **Closing Assessment**
+
+Do not emit an italic speaker-attribution disclaimer unless attribution is actually impossible.
+When names or labels are usable, attribute statements to those people throughout and skip the
+disclaimer. Never claim the source ended mid-sentence.

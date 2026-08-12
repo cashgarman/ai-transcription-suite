@@ -1,1 +1,13 @@
-Create a detailed Markdown write-up of this transcript segment. Preserve speaker attribution and every substantive detail.
+Create a detailed Markdown write-up of this transcript segment. This is an extraction pass,
+not the final meeting document.
+
+Collect actual speaker names and labels as they appear, plus names mentioned in dialogue.
+Do not paraphrase participants as a role group.
+
+Preserve every substantive topic, decision, request, concern, question, answer, number,
+deadline, name, role, action item (owner, action, and priority when stated), constraint,
+risk, dependency, blocker, and technical detail. Attribute statements to speakers when
+labels or names are available.
+
+Honor the markers `[MORE SEGMENTS FOLLOW]` and `[END OF TRANSCRIPT]`. If more segments
+follow, do not write a closing assessment or claim the meeting ended.

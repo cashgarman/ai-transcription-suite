@@ -1,0 +1,5 @@
+Compact these running meeting notes into a dense continuation brief for the next transcript
+segment. Keep every speaker name and label, decision, action item (owner, action, priority),
+open question, risk, dependency, blocker, unresolved thread, number, deadline, and technical
+term. Drop fluff, repetition, and prose. Do not write a closing assessment. Do not claim the
+source ended. Output compact Markdown only.

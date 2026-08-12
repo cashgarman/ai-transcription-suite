@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -65,6 +66,8 @@ class SettingsDialog(QDialog):
         self.hf_token.setPlaceholderText(
             "Leave blank to retain the token in the OS credential store"
         )
+        self.use_cached_transcript = QCheckBox()
+        self.use_cached_transcript.setChecked(settings.use_cached_transcript)
 
         form = QFormLayout()
         form.addRow("Compute type", self.compute_type)
@@ -76,6 +79,7 @@ class SettingsDialog(QDialog):
         form.addRow("Nearest-speaker threshold", self.inherit_threshold)
         form.addRow("Output directory", output_row)
         form.addRow("Hugging Face token", self.hf_token)
+        form.addRow("Use cached transcript", self.use_cached_transcript)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Save
@@ -105,6 +109,7 @@ class SettingsDialog(QDialog):
         self.settings.max_block_duration_seconds = self.max_duration.value()
         self.settings.inherit_speaker_threshold_seconds = self.inherit_threshold.value()
         self.settings.output_directory = self.output_directory.text().strip()
+        self.settings.use_cached_transcript = self.use_cached_transcript.isChecked()
         token = self.hf_token.text().strip()
         try:
             if token:

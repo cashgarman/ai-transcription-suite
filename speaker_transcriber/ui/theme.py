@@ -419,18 +419,50 @@ def _stylesheet() -> str:
         border-radius: 8px;
     }}
 
-    QProgressBar#jobProgressBar,
+    QWidget#jobProgressHost {{
+        background: transparent;
+        min-height: 28px;
+        max-height: 28px;
+    }}
+
+    QProgressBar#jobProgressBar {{
+        background-color: {Theme.SURFACE_SUNKEN};
+        border: 1px solid {Theme.BORDER};
+        border-radius: 8px;
+        min-height: 28px;
+        max-height: 28px;
+        text-align: left;
+    }}
+
+    QProgressBar#jobProgressBar::chunk {{
+        background-color: rgba(126, 200, 212, 0.42);
+        border-radius: 7px;
+    }}
+
+    QLabel#jobStageLabel {{
+        background: transparent;
+        color: {Theme.TEXT};
+        font-size: 12px;
+    }}
+
+    QProgressBar#cpuMeter,
+    QProgressBar#ramMeter,
     QProgressBar#vramMeter,
     QProgressBar#gpuMeter {{
         background-color: {Theme.SURFACE_SUNKEN};
         border: 1px solid {Theme.BORDER};
         border-radius: 4px;
-        min-height: 8px;
-        max-height: 8px;
+        min-height: 6px;
+        max-height: 6px;
         text-align: center;
     }}
 
-    QProgressBar#jobProgressBar::chunk {{
+    QProgressBar#cpuMeter::chunk {{
+        background-color: {Theme.ACCENT_PRESSED};
+        border-radius: 3px;
+    }}
+
+    QProgressBar#ramMeter::chunk {{
         background-color: {Theme.ACCENT};
         border-radius: 3px;
     }}
@@ -498,5 +530,39 @@ def _stylesheet() -> str:
         color: {Theme.ACCENT_HOVER};
         border: none;
         background: transparent;
+    }}
+
+    QFrame#notificationBanner {{
+        background-color: {Theme.SURFACE_RAISED};
+        color: {Theme.TEXT};
+        border: 1px solid {Theme.BORDER};
+        border-radius: 10px;
+    }}
+
+    QFrame#notificationBanner[kind="info"] {{
+        border: 1px solid {Theme.ACCENT};
+        background-color: #1E2C31;
+    }}
+
+    QFrame#notificationBanner[kind="success"] {{
+        border: 1px solid {Theme.SUCCESS};
+        background-color: #1C2A22;
+    }}
+
+    QFrame#notificationBanner[kind="warning"] {{
+        border: 1px solid #FFB74D;
+        background-color: #2A2418;
+    }}
+
+    QFrame#notificationBanner[kind="error"] {{
+        border: 1px solid {Theme.DANGER};
+        background-color: #2A1C1C;
+    }}
+
+    QLabel#notificationBannerText {{
+        background: transparent;
+        color: {Theme.TEXT};
+        font-weight: 600;
+        font-size: 12px;
     }}
     """

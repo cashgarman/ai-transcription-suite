@@ -17,6 +17,7 @@ def test_settings_round_trip(tmp_path) -> None:
     assert loaded.batch_size == 2
     assert loaded.language == "en"
     assert loaded.ollama_model == "llama3.2:3b"
+    assert loaded.ollama_num_ctx == 8192
 
 
 def test_invalid_file_falls_back_to_defaults(tmp_path) -> None:
@@ -50,6 +51,46 @@ def test_invalid_recent_files_are_ignored(tmp_path) -> None:
     assert loaded.recent_files == []
 
 
-def test_rejects_conflicting_speaker_counts() -> None:
+def test_rejects_inverted_speaker_range() -> None:
     with pytest.raises(ValueError):
-        AppSettings(num_speakers=2, min_speakers=1).validate()
+        AppSettings(min_speakers=6, max_speakers=2).validate()
+
+
+def test_speaker_settings_round_trip(tmp_path) -> None:
+    store = SettingsStore(tmp_path)
+    settings = AppSettings(
+        speaker_mode="exact",
+        num_speakers=2,
+        min_speakers=1,
+        max_speakers=6,
+    )
+    store.save(settings)
+    loaded = store.load()
+    assert loaded.speaker_mode == "exact"
+    assert loaded.num_speakers == 2
+    assert loaded.min_speakers == 1
+    assert loaded.max_speakers == 6
+
+
+def test_legacy_exact_speaker_settings_infer_mode(tmp_path) -> None:
+    store = SettingsStore(tmp_path)
+    store.settings_path.write_text(
+        '{"model": "medium", "num_speakers": 3}',
+        encoding="utf-8",
+    )
+    loaded = store.load()
+    assert loaded.speaker_mode == "exact"
+    assert loaded.num_speakers == 3
+
+
+def test_ollama_num_ctx_round_trip(tmp_path) -> None:
+    store = SettingsStore(tmp_path)
+    settings = AppSettings(ollama_num_ctx=32768)
+    store.save(settings)
+    assert store.load().ollama_num_ctx == 32768
+
+
+def test_ollama_num_ctx_snaps_to_nearest_choice() -> None:
+    settings = AppSettings(ollama_num_ctx=10000)
+    settings.validate()
+    assert settings.ollama_num_ctx == 8192

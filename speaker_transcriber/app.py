@@ -17,12 +17,18 @@ def main() -> int:
     from PySide6.QtCore import QEventLoop, QThread, Qt, Signal
     from PySide6.QtWidgets import QApplication, QMessageBox
 
+    from speaker_transcriber.ui.branding import (
+        apply_application_identity,
+        configure_process_identity,
+    )
+
+    configure_process_identity()
     QApplication.setHighDpiScaleFactorRoundingPolicy(
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
     )
     application = QApplication(sys.argv)
-    application.setApplicationName("Summit")
     application.setOrganizationName("SpeakerTranscriber")
+    apply_application_identity(application)
 
     from speaker_transcriber.ui.theme import apply_application_theme
 

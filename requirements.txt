@@ -9,3 +9,4 @@ torch>=2.5
 torchaudio>=2.5
 nvidia-cudnn-cu12==8.9.7.29
 ollama>=0.4
+reportlab>=4.2

@@ -1,0 +1,18 @@
+Rewrite these meeting notes as a single well-structured Markdown meeting document.
+Keep every fact, name, number, decision, and action. Do not invent content.
+Use this exact structure:
+
+1. `#` title
+2. Italic one-line meeting summary
+3. **Participants:** named people from the notes (display names when available)
+4. **Primary topics:** comma-separated topics
+5. `## Executive Summary` — several paragraphs covering the full discussion
+6. `## Key Decisions and Direction` — numbered list
+7. Detailed `##` topic sections for the bulk of the document
+8. `## Action Items` — a Markdown pipe table with columns Owner | Action | Priority
+9. `## Open Questions` — bullet list
+10. `## Risks, Dependencies, and Blockers` — each risk as a short paragraph followed by a `Mitigation:` line when mitigation was discussed
+11. `## Closing Assessment`
+
+Output Markdown only. Use `##` for major sections. Make the action-item table a real pipe table, even if the source used tabs, bullets, or prose.
+If a required section has no source material, keep the heading and a single honest line such as "None recorded."

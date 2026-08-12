@@ -19,17 +19,23 @@ hiddenimports = (
         "speaker_transcriber.ui.main_window",
         "speaker_transcriber.pipeline.processor",
         "keyring.backends.Windows",
+        "reportlab",
     ]
 )
 datas = (
     collect_data_files("whisperx")
     + collect_data_files("pyannote.audio")
     + collect_data_files("faster_whisper")
+    + collect_data_files("reportlab")
     + [
         (
             str(project_root / "speaker_transcriber" / "prompts"),
             "speaker_transcriber/prompts",
-        )
+        ),
+        (
+            str(project_root / "speaker_transcriber" / "assets"),
+            "speaker_transcriber/assets",
+        ),
     ]
 )
 binaries = collect_dynamic_libs("ctranslate2") + collect_dynamic_libs("torch")
@@ -67,6 +73,7 @@ exe = EXE(
     upx=False,
     console=False,
     disable_windowed_traceback=False,
+    icon=str(project_root / "speaker_transcriber" / "assets" / "summit.ico"),
 )
 coll = COLLECT(
     exe,

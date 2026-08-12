@@ -12,12 +12,14 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import (
     QApplication,
+    QHBoxLayout,
     QLabel,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
 
+from speaker_transcriber.ui.branding import BrandMark, display_font, summit_icon
 from speaker_transcriber.ui.theme import Theme
 
 
@@ -136,26 +138,38 @@ class SplashScreen(QWidget):
             | Qt.WindowType.Tool,
         )
         self.setObjectName("SummitSplash")
-        self.setFixedSize(440, 220)
+        self.setWindowIcon(summit_icon())
+        self.setFixedSize(460, 236)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
         self.setAutoFillBackground(False)
         self.setStyleSheet("background: transparent;")
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(36, 28, 36, 22)
+        root.setContentsMargins(36, 36, 36, 20)
         root.setSpacing(0)
 
+        mark = BrandMark(72, framed=False)
+
         brand = QLabel("Summit")
-        brand.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        brand_font = QFont()
-        brand_font.setFamilies(["Segoe UI Variable", "Segoe UI", "Inter", "Arial"])
-        brand_font.setPointSize(20)
-        brand_font.setWeight(QFont.Weight.DemiBold)
+        brand.setAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+        )
+        brand_font = display_font(28, QFont.Weight.Bold)
+        brand_font.setCapitalization(QFont.Capitalization.SmallCaps)
         brand.setFont(brand_font)
         brand.setStyleSheet(
-            f"color: {Theme.TEXT}; background: transparent; letter-spacing: 0.4px;"
+            f"color: {Theme.TEXT}; background: transparent;"
         )
+
+        brand_row = QHBoxLayout()
+        brand_row.setContentsMargins(0, 0, 0, 0)
+        brand_row.setSpacing(10)
+        brand_row.addStretch(1)
+        brand_row.addWidget(mark, 0, Qt.AlignmentFlag.AlignVCenter)
+        brand_row.addWidget(brand, 0, Qt.AlignmentFlag.AlignVCenter)
+        brand_row.addStretch(1)
+        root.addLayout(brand_row)
 
         tagline = QLabel(
             "Locally generated, completely private, transcription and "
@@ -165,12 +179,11 @@ class SplashScreen(QWidget):
         tagline.setWordWrap(True)
         tagline.setStyleSheet(
             f"color: {Theme.TEXT_MUTED}; background: transparent; "
-            "font-size: 12px; padding-top: 6px; line-height: 1.3;"
+            "font-size: 12px; padding-top: 8px; line-height: 1.3;"
         )
 
-        root.addWidget(brand)
         root.addWidget(tagline)
-        root.addSpacing(18)
+        root.addSpacing(16)
 
         self._progress = _HazardProgressBar()
         self._progress.setRange(0, 1000)

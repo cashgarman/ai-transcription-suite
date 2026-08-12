@@ -35,6 +35,7 @@ def test_generate_stream_falls_back_to_thinking(monkeypatch) -> None:
     result = summarizer._generate_stream("prompt", 100, chunks.append)
     assert result == "Final"
     assert "".join(chunks) == "Draft summary Final"
+    assert summarizer.num_ctx == 8192
 
 
 def test_format_approx_vram_gigabytes() -> None:

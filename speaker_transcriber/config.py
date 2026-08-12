@@ -11,6 +11,34 @@ from speaker_transcriber.huggingface_setup import load_project_env
 SUPPORTED_MODELS = ("medium", "distil-large-v3", "large-v3")
 SUPPORTED_COMPUTE_TYPES = ("int8_float16", "float16", "int8", "float32")
 SUPPORTED_DEVICES = ("cuda", "cpu")
+SPEAKER_MODES = ("automatic", "exact", "minmax")
+OLLAMA_CTX_CHOICES = (4096, 8192, 16384, 32768, 65536, 131072)
+DEFAULT_OLLAMA_NUM_CTX = 8192
+
+
+def snap_ollama_num_ctx(value: int) -> int:
+    return min(OLLAMA_CTX_CHOICES, key=lambda choice: abs(choice - int(value)))
+
+
+def format_ctx_label(num_ctx: int) -> str:
+    if num_ctx >= 1024 and num_ctx % 1024 == 0:
+        return f"{num_ctx // 1024}k"
+    return str(num_ctx)
+
+
+def infer_speaker_mode(
+    speaker_mode: str | None,
+    num_speakers: int | None,
+    min_speakers: int | None,
+    max_speakers: int | None,
+) -> str:
+    if speaker_mode in SPEAKER_MODES:
+        return speaker_mode
+    if num_speakers is not None:
+        return "exact"
+    if min_speakers is not None or max_speakers is not None:
+        return "minmax"
+    return "automatic"
 
 
 def app_data_dir() -> Path:
@@ -30,6 +58,7 @@ class AppSettings:
     num_speakers: int | None = None
     min_speakers: int | None = None
     max_speakers: int | None = None
+    speaker_mode: str = "automatic"
     merge_gap_seconds: float = 0.5
     max_block_duration_seconds: float = 30.0
     inherit_speaker_threshold_seconds: float = 0.3
@@ -39,6 +68,7 @@ class AppSettings:
     window_height: int = 820
     use_cached_transcript: bool = True
     ollama_model: str = "qwen3.5:9b"
+    ollama_num_ctx: int = DEFAULT_OLLAMA_NUM_CTX
     recent_files: list[str] = field(default_factory=list)
 
     def validate(self) -> None:
@@ -52,10 +82,13 @@ class AppSettings:
             raise ValueError("Alignment device must be 'cuda' or 'cpu'.")
         if self.diarization_device not in SUPPORTED_DEVICES:
             raise ValueError("Diarization device must be 'cuda' or 'cpu'.")
-        if self.num_speakers is not None and (
-            self.min_speakers is not None or self.max_speakers is not None
-        ):
-            raise ValueError("Exact speaker count cannot be combined with min/max counts.")
+        if self.speaker_mode not in SPEAKER_MODES:
+            self.speaker_mode = infer_speaker_mode(
+                None,
+                self.num_speakers,
+                self.min_speakers,
+                self.max_speakers,
+            )
         if (
             self.min_speakers is not None
             and self.max_speakers is not None
@@ -64,6 +97,14 @@ class AppSettings:
             raise ValueError("Minimum speakers cannot exceed maximum speakers.")
         if self.merge_gap_seconds < 0 or self.max_block_duration_seconds <= 0:
             raise ValueError("Transcript merge thresholds must be positive.")
+        try:
+            ctx = int(self.ollama_num_ctx)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Ollama context length must be an integer.") from exc
+        if ctx not in OLLAMA_CTX_CHOICES:
+            self.ollama_num_ctx = snap_ollama_num_ctx(ctx)
+        else:
+            self.ollama_num_ctx = ctx
 
 
 class SettingsStore:
@@ -88,6 +129,18 @@ class SettingsStore:
                     for item in filtered["recent_files"]
                     if isinstance(item, str) and item.strip()
                 ]
+            if "ollama_num_ctx" in filtered:
+                try:
+                    filtered["ollama_num_ctx"] = int(filtered["ollama_num_ctx"])
+                except (TypeError, ValueError):
+                    filtered.pop("ollama_num_ctx")
+            if "speaker_mode" not in filtered or filtered.get("speaker_mode") not in SPEAKER_MODES:
+                filtered["speaker_mode"] = infer_speaker_mode(
+                    None,
+                    filtered.get("num_speakers"),
+                    filtered.get("min_speakers"),
+                    filtered.get("max_speakers"),
+                )
             settings = AppSettings(**filtered)
             settings.validate()
             return settings

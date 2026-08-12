@@ -11,6 +11,9 @@ PROMPT_FILENAMES = {
     "system": "system.txt",
     "chunk": "chunk.txt",
     "merge": "merge.txt",
+    "compact": "compact.txt",
+    "validate": "validate.txt",
+    "format": "format.txt",
 }
 
 _cache: dict[str, str] = {}

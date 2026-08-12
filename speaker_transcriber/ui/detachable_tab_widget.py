@@ -4,6 +4,8 @@ from dataclasses import dataclass
 
 from PySide6.QtCore import QPoint, Qt, Signal
 from PySide6.QtGui import QCloseEvent
+
+from speaker_transcriber.ui.branding import summit_icon
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -56,6 +58,7 @@ class FloatingTabWindow(QWidget):
         super().__init__(None, Qt.WindowType.Window)
         self.setObjectName("floatingTabWindow")
         self.setWindowTitle(f"{title} — Summit")
+        self.setWindowIcon(summit_icon())
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
         layout.addWidget(content)
