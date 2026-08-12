@@ -4,6 +4,7 @@ from PySide6.QtCore import QEvent
 from PySide6.QtWidgets import QWidget
 
 from speaker_transcriber.pipeline.types import TranscriptResult
+from speaker_transcriber.ui.busy_spinner import BusySpinnerOverlay
 from speaker_transcriber.ui.transcript_heatmap import TranscriptTimelineHeatmap
 from speaker_transcriber.ui.transcript_view import TranscriptView
 
@@ -14,6 +15,7 @@ class TranscriptPanel(QWidget):
         self.transcript_view = TranscriptView(self)
         self.heatmap = TranscriptTimelineHeatmap(self.transcript_view)
         self.heatmap.raise_()
+        self._busy_overlay = BusySpinnerOverlay(self)
 
         self.transcript_view.verticalScrollBar().valueChanged.connect(
             self._update_heatmap_scroll
@@ -33,6 +35,9 @@ class TranscriptPanel(QWidget):
         super().resizeEvent(event)
         self.transcript_view.setGeometry(self.rect())
         self._position_heatmap()
+        self._busy_overlay.setGeometry(self.rect())
+        if self._busy_overlay.isVisible():
+            self._busy_overlay.raise_()
 
     def set_result(self, result: TranscriptResult | None) -> None:
         self.transcript_view.set_result(result)
@@ -45,6 +50,15 @@ class TranscriptPanel(QWidget):
 
     def goto_adjacent_speaker_entry(self, speaker_id: str, delta: int) -> bool:
         return self.transcript_view.goto_adjacent_speaker_entry(speaker_id, delta)
+
+    def goto_speaker_entry_edge(self, speaker_id: str, *, first: bool) -> bool:
+        return self.transcript_view.goto_speaker_entry_edge(speaker_id, first=first)
+
+    def set_busy(self, busy: bool) -> None:
+        self._busy_overlay.setGeometry(self.rect())
+        self._busy_overlay.set_busy(busy)
+        if busy:
+            self._busy_overlay.raise_()
 
     def clear(self) -> None:
         self.set_result(None)
@@ -61,6 +75,8 @@ class TranscriptPanel(QWidget):
             self.transcript_view.height(),
         )
         self.heatmap.raise_()
+        if self._busy_overlay.isVisible():
+            self._busy_overlay.raise_()
 
     def _update_heatmap_scroll(self) -> None:
         scroll_bar = self.transcript_view.verticalScrollBar()

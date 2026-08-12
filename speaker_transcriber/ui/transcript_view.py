@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from PySide6.QtCore import Qt
 from PySide6.QtGui import (
     QColor,
+    QKeyEvent,
     QTextBlock,
     QTextBlockUserData,
     QTextCharFormat,
@@ -25,15 +27,35 @@ class SegmentBlockData(QTextBlockUserData):
 class TranscriptView(QTextEdit):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self.setReadOnly(True)
         self.setAcceptRichText(True)
         self.setPlaceholderText("The speaker-labelled transcript will appear here.")
         self._speaker_colors: dict[str, str] = {}
         self._highlighted_speaker: str | None = None
+        self._active_entry_start: float | None = None
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        speaker_id = self._highlighted_speaker
+        modifiers = event.modifiers() & ~Qt.KeyboardModifier.KeypadModifier
+        if speaker_id and modifiers == Qt.KeyboardModifier.NoModifier:
+            key = event.key()
+            handled = False
+            if key in (Qt.Key.Key_Up, Qt.Key.Key_PageUp):
+                handled = self.goto_adjacent_speaker_entry(speaker_id, -1)
+            elif key in (Qt.Key.Key_Down, Qt.Key.Key_PageDown):
+                handled = self.goto_adjacent_speaker_entry(speaker_id, 1)
+            elif key == Qt.Key.Key_Home:
+                handled = self.goto_speaker_entry_edge(speaker_id, first=True)
+            elif key == Qt.Key.Key_End:
+                handled = self.goto_speaker_entry_edge(speaker_id, first=False)
+            if handled:
+                event.accept()
+                return
+        super().keyPressEvent(event)
 
     def set_result(self, result: TranscriptResult | None) -> None:
         self.clear()
         self._highlighted_speaker = None
+        self._active_entry_start = None
         self.setExtraSelections([])
         self._speaker_colors = {}
         if result is None:
@@ -117,18 +139,58 @@ class TranscriptView(QTextEdit):
             block = block.next()
         if best_block is None:
             return
+        data = best_block.userData()
+        if (
+            self._highlighted_speaker is not None
+            and isinstance(data, SegmentBlockData)
+            and data.speaker_id == self._highlighted_speaker
+        ):
+            self._active_entry_start = data.start
+            self._focus_block(best_block)
+            self._refresh_speaker_highlights()
+            return
         self._focus_block(best_block)
 
     def highlight_speaker(self, speaker_id: str | None) -> None:
         self._highlighted_speaker = speaker_id
         if speaker_id is None:
+            self._active_entry_start = None
             self.setExtraSelections([])
             return
 
-        color = QColor(self._speaker_colors.get(speaker_id, "#B0BEC5"))
-        color.setAlpha(96)
-        highlight_format = QTextCharFormat()
-        highlight_format.setBackground(color)
+        cursor_data = self.textCursor().block().userData()
+        if (
+            isinstance(cursor_data, SegmentBlockData)
+            and cursor_data.speaker_id == speaker_id
+        ):
+            self._active_entry_start = cursor_data.start
+        else:
+            self._active_entry_start = None
+        self._refresh_speaker_highlights()
+
+    def _speaker_fill_color(self, speaker_id: str, *, active: bool) -> QColor:
+        tint = QColor(self._speaker_colors.get(speaker_id, "#B0BEC5"))
+        base = QColor(Theme.WINDOW)
+        # Mix the speaker hue into the dark window color so white body text
+        # stays readable. Active entries get a stronger tint, not a lighter one.
+        amount = 0.42 if active else 0.22
+        return QColor(
+            int(base.red() + (tint.red() - base.red()) * amount),
+            int(base.green() + (tint.green() - base.green()) * amount),
+            int(base.blue() + (tint.blue() - base.blue()) * amount),
+            235 if active else 170,
+        )
+
+    def _refresh_speaker_highlights(self) -> None:
+        speaker_id = self._highlighted_speaker
+        if speaker_id is None:
+            self.setExtraSelections([])
+            return
+
+        base_format = QTextCharFormat()
+        base_format.setBackground(self._speaker_fill_color(speaker_id, active=False))
+        active_format = QTextCharFormat()
+        active_format.setBackground(self._speaker_fill_color(speaker_id, active=True))
 
         selections: list[QTextEdit.ExtraSelection] = []
         block = self.document().firstBlock()
@@ -142,7 +204,11 @@ class TranscriptView(QTextEdit):
                     QTextCursor.MoveOperation.EndOfBlock,
                     QTextCursor.MoveMode.KeepAnchor,
                 )
-                selection.format = highlight_format
+                is_active = (
+                    self._active_entry_start is not None
+                    and data.start == self._active_entry_start
+                )
+                selection.format = active_format if is_active else base_format
                 selections.append(selection)
             block = block.next()
 
@@ -170,9 +236,23 @@ class TranscriptView(QTextEdit):
             if target is None:
                 target = anchors[-1]
 
+        return self._focus_speaker_entry(speaker_id, target)
+
+    def goto_speaker_entry_edge(self, speaker_id: str, *, first: bool) -> bool:
+        anchors = self._speaker_entry_anchors(speaker_id)
+        if not anchors:
+            return False
+        target = anchors[0] if first else anchors[-1]
+        return self._focus_speaker_entry(speaker_id, target)
+
+    def _focus_speaker_entry(self, speaker_id: str, target: QTextBlock) -> bool:
+        data = target.userData()
+        self._active_entry_start = (
+            data.start if isinstance(data, SegmentBlockData) else None
+        )
+        self._highlighted_speaker = speaker_id
         self._focus_block(target)
-        if self._highlighted_speaker == speaker_id:
-            self.highlight_speaker(speaker_id)
+        self._refresh_speaker_highlights()
         return True
 
     def _speaker_entry_anchors(self, speaker_id: str) -> list[QTextBlock]:

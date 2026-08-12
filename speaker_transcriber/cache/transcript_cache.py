@@ -27,6 +27,9 @@ class TranscriptCache:
     def path_for(self, source: Path | list[Path]) -> Path:
         return self.directory / f"{self._cache_stem(source)}.json"
 
+    def speakers_path_for(self, source: Path | list[Path]) -> Path:
+        return self.directory / f"{self._cache_stem(source)}.speakers.json"
+
     def exists(self, source: Path | list[Path]) -> bool:
         return self.path_for(source).is_file()
 
@@ -40,6 +43,11 @@ class TranscriptCache:
             media_source = MediaSource.parse(source)
             result.source_file = media_source.source_file_for_result()
             result.source_files = media_source.source_files_for_result()
+            stored_names = self._load_speaker_names(source)
+            if stored_names:
+                for label, name in stored_names.items():
+                    if label in result.speakers:
+                        result.speakers[label] = name
             return result
         except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
             LOGGER.warning("Failed to load transcript cache %s: %s", path, exc)
@@ -66,8 +74,57 @@ class TranscriptCache:
             handle.write(payload)
             temp_path = handle.name
         os.replace(temp_path, path)
+        self._save_speaker_names(cache_source, result.speakers)
 
     def delete(self, source: Path | list[Path]) -> None:
         path = self.path_for(source)
         if path.is_file():
             path.unlink()
+        speakers_path = self.speakers_path_for(source)
+        if speakers_path.is_file():
+            speakers_path.unlink()
+
+    def _load_speaker_names(self, source: Path | list[Path]) -> dict[str, str]:
+        path = self.speakers_path_for(source)
+        if not path.is_file():
+            return {}
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
+            LOGGER.warning("Failed to load speaker name cache %s: %s", path, exc)
+            return {}
+        if not isinstance(payload, dict):
+            return {}
+        return {
+            str(label): str(name).strip()
+            for label, name in payload.items()
+            if str(name).strip()
+        }
+
+    def _save_speaker_names(
+        self,
+        source: Path | list[Path],
+        speakers: dict[str, str],
+    ) -> None:
+        path = self.speakers_path_for(source)
+        cleaned = {
+            str(label): str(name).strip()
+            for label, name in speakers.items()
+            if str(name).strip()
+        }
+        if not cleaned:
+            if path.is_file():
+                path.unlink()
+            return
+        self.directory.mkdir(parents=True, exist_ok=True)
+        text = json.dumps(cleaned, indent=2, ensure_ascii=False) + "\n"
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=self.directory,
+            delete=False,
+            suffix=".tmp",
+        ) as handle:
+            handle.write(text)
+            temp_path = handle.name
+        os.replace(temp_path, path)

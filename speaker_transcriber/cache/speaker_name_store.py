@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import json
-import hashlib
-import json
 import logging
 import os
 import tempfile
@@ -15,49 +13,48 @@ from speaker_transcriber.config import app_data_dir
 LOGGER = logging.getLogger("speaker_transcriber.cache")
 
 
-def _speaker_session_key(sources: Path | list[Path]) -> str:
-    media_source = MediaSource.parse(sources)
-    payload = [
-        {
-            "path": str(path),
-            "mtime": path.stat().st_mtime,
-            "size": path.stat().st_size,
-        }
-        for path in sorted(media_source.paths, key=lambda item: str(item))
-    ]
-    digest = hashlib.sha256(json.dumps(payload).encode()).hexdigest()[:16]
-    stem = Path(payload[0]["path"]).stem
-    return f"{stem}_{digest}"
-
-
 class SpeakerNameStore:
-    def __init__(self, directory: Path | None = None) -> None:
-        self.directory = directory or (app_data_dir() / "speaker_names")
-        self.path = self.directory / "sessions.json"
+    """Persists display names alongside transcript cache files."""
 
-    def _session_key(self, sources: Path | list[Path]) -> str:
-        return _speaker_session_key(sources)
+    def __init__(self, directory: Path | None = None) -> None:
+        # Keep names next to transcript JSON caches under transcripts/.
+        self.directory = directory or (app_data_dir() / "transcripts")
+        self._legacy_path = app_data_dir() / "speaker_names" / "sessions.json"
+
+    def path_for(self, sources: Path | list[Path]) -> Path:
+        return self.directory / f"{MediaSource.parse(sources).cache_key()}.speakers.json"
 
     def load(self, sources: Path | list[Path]) -> dict[str, str]:
-        session_key = self._session_key(sources)
-        payload = self._read_payload()
-        names = payload.get("sessions", {}).get(session_key, {})
-        return {str(key): str(value) for key, value in names.items()}
+        path = self.path_for(sources)
+        if path.is_file():
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
+                LOGGER.warning("Failed to load speaker names %s: %s", path, exc)
+                return {}
+            return self._normalize_names(payload)
+
+        return self._load_legacy(sources)
 
     def save(self, sources: Path | list[Path], names: dict[str, str]) -> None:
-        cleaned = {
-            str(label): str(name).strip()
-            for label, name in names.items()
-            if str(name).strip()
-        }
-        session_key = self._session_key(sources)
-        payload = self._read_payload()
-        sessions = payload.setdefault("sessions", {})
-        if cleaned:
-            sessions[session_key] = cleaned
-        else:
-            sessions.pop(session_key, None)
-        self._write_payload(payload)
+        cleaned = self._normalize_names(names)
+        path = self.path_for(sources)
+        self.directory.mkdir(parents=True, exist_ok=True)
+        if not cleaned:
+            if path.is_file():
+                path.unlink()
+            return
+        text = json.dumps(cleaned, indent=2, ensure_ascii=False) + "\n"
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=self.directory,
+            delete=False,
+            suffix=".tmp",
+        ) as handle:
+            handle.write(text)
+            temp_path = handle.name
+        os.replace(temp_path, path)
 
     def apply_to_names(
         self,
@@ -73,29 +70,45 @@ class SpeakerNameStore:
                 merged[label] = name
         return merged
 
-    def _read_payload(self) -> dict:
-        if not self.path.is_file():
-            return {"sessions": {}}
-        try:
-            payload = json.loads(self.path.read_text(encoding="utf-8"))
-        except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
-            LOGGER.warning("Failed to load speaker name store %s: %s", self.path, exc)
-            return {"sessions": {}}
-        if not isinstance(payload, dict):
-            return {"sessions": {}}
-        payload.setdefault("sessions", {})
-        return payload
+    @staticmethod
+    def _normalize_names(names: object) -> dict[str, str]:
+        if not isinstance(names, dict):
+            return {}
+        return {
+            str(label): str(name).strip()
+            for label, name in names.items()
+            if str(name).strip()
+        }
 
-    def _write_payload(self, payload: dict) -> None:
-        self.directory.mkdir(parents=True, exist_ok=True)
-        text = json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
-        with tempfile.NamedTemporaryFile(
-            mode="w",
-            encoding="utf-8",
-            dir=self.directory,
-            delete=False,
-            suffix=".tmp",
-        ) as handle:
-            handle.write(text)
-            temp_path = handle.name
-        os.replace(temp_path, self.path)
+    def _load_legacy(self, sources: Path | list[Path]) -> dict[str, str]:
+        if not self._legacy_path.is_file():
+            return {}
+        try:
+            payload = json.loads(self._legacy_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
+            LOGGER.warning(
+                "Failed to load legacy speaker name store %s: %s",
+                self._legacy_path,
+                exc,
+            )
+            return {}
+        if not isinstance(payload, dict):
+            return {}
+        sessions = payload.get("sessions", {})
+        if not isinstance(sessions, dict):
+            return {}
+
+        media_source = MediaSource.parse(sources)
+        cache_key = media_source.cache_key()
+        if cache_key in sessions:
+            return self._normalize_names(sessions.get(cache_key))
+
+        # Older builds keyed single/multi sources with an mtime digest.
+        for key, names in sessions.items():
+            if not isinstance(key, str):
+                continue
+            if key == cache_key or key.startswith(f"{media_source.primary_path.stem}_"):
+                normalized = self._normalize_names(names)
+                if normalized:
+                    return normalized
+        return {}

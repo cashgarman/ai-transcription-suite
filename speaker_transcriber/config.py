@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import asdict, dataclass, fields
+from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 
 from speaker_transcriber.huggingface_setup import load_project_env
@@ -39,6 +39,7 @@ class AppSettings:
     window_height: int = 820
     use_cached_transcript: bool = True
     ollama_model: str = "qwen3.5:9b"
+    recent_files: list[str] = field(default_factory=list)
 
     def validate(self) -> None:
         if self.model not in SUPPORTED_MODELS:
@@ -76,7 +77,18 @@ class SettingsStore:
         try:
             data = json.loads(self.settings_path.read_text(encoding="utf-8"))
             allowed = {item.name for item in fields(AppSettings)}
-            settings = AppSettings(**{key: value for key, value in data.items() if key in allowed})
+            filtered = {key: value for key, value in data.items() if key in allowed}
+            if "recent_files" in filtered and not isinstance(
+                filtered["recent_files"], list
+            ):
+                filtered["recent_files"] = []
+            elif "recent_files" in filtered:
+                filtered["recent_files"] = [
+                    str(item)
+                    for item in filtered["recent_files"]
+                    if isinstance(item, str) and item.strip()
+                ]
+            settings = AppSettings(**filtered)
             settings.validate()
             return settings
         except (OSError, ValueError, TypeError, json.JSONDecodeError):

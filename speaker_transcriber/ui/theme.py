@@ -67,6 +67,10 @@ def apply_application_theme(application: QApplication) -> None:
     application.setPalette(palette)
     application.setStyleSheet(_stylesheet())
 
+    from speaker_transcriber.ui.window_chrome import install_dark_window_chrome
+
+    install_dark_window_chrome(application)
+
 
 def _stylesheet() -> str:
     return f"""
@@ -78,6 +82,10 @@ def _stylesheet() -> str:
     QMainWindow, QDialog, QWidget {{
         background-color: {Theme.WINDOW};
         color: {Theme.TEXT};
+    }}
+
+    QWidget#SummitSplash {{
+        background: transparent;
     }}
 
     QToolTip {{
@@ -335,6 +343,29 @@ def _stylesheet() -> str:
         width: 0;
     }}
 
+    QMenuBar {{
+        background-color: {Theme.SURFACE};
+        color: {Theme.TEXT};
+        border-bottom: 1px solid {Theme.BORDER};
+        spacing: 2px;
+        padding: 2px 4px;
+    }}
+
+    QMenuBar::item {{
+        background: transparent;
+        color: {Theme.TEXT};
+        padding: 6px 10px;
+        border-radius: 6px;
+    }}
+
+    QMenuBar::item:selected {{
+        background-color: {Theme.ACCENT_SOFT};
+    }}
+
+    QMenuBar::item:pressed {{
+        background-color: {Theme.ACCENT_SOFT};
+    }}
+
     QMenu {{
         background-color: {Theme.SURFACE_RAISED};
         color: {Theme.TEXT};
@@ -351,6 +382,10 @@ def _stylesheet() -> str:
     QMenu::item:selected {{
         background-color: {Theme.ACCENT_SOFT};
         color: {Theme.TEXT};
+    }}
+
+    QMenu::item:disabled {{
+        color: {Theme.TEXT_MUTED};
     }}
 
     QMenu::separator {{
@@ -370,5 +405,98 @@ def _stylesheet() -> str:
     QStatusBar {{
         background: {Theme.SURFACE};
         color: {Theme.TEXT_MUTED};
+    }}
+
+    QFrame#collapsibleSection {{
+        background-color: {Theme.SURFACE};
+        border: 1px solid {Theme.BORDER};
+        border-radius: 10px;
+    }}
+
+    QFrame#statusStrip {{
+        background-color: {Theme.SURFACE};
+        border: 1px solid {Theme.BORDER};
+        border-radius: 8px;
+    }}
+
+    QProgressBar#jobProgressBar,
+    QProgressBar#vramMeter,
+    QProgressBar#gpuMeter {{
+        background-color: {Theme.SURFACE_SUNKEN};
+        border: 1px solid {Theme.BORDER};
+        border-radius: 4px;
+        min-height: 8px;
+        max-height: 8px;
+        text-align: center;
+    }}
+
+    QProgressBar#jobProgressBar::chunk {{
+        background-color: {Theme.ACCENT};
+        border-radius: 3px;
+    }}
+
+    QProgressBar#vramMeter::chunk {{
+        background-color: {Theme.ACCENT};
+        border-radius: 3px;
+    }}
+
+    QProgressBar#gpuMeter::chunk {{
+        background-color: {Theme.ACCENT_HOVER};
+        border-radius: 3px;
+    }}
+
+    QLabel#meterCaption {{
+        color: {Theme.TEXT_MUTED};
+        font-size: 10px;
+        padding: 0;
+        background: transparent;
+    }}
+
+    QLabel#fieldCaption {{
+        color: {Theme.TEXT_MUTED};
+        padding: 6px 12px;
+    }}
+
+    QLabel#detachedPlaceholderText {{
+        color: {Theme.TEXT_MUTED};
+    }}
+
+    QWidget#collapsibleHeader {{
+        background: transparent;
+    }}
+
+    QWidget#collapsibleContent {{
+        background: transparent;
+    }}
+
+    QToolButton {{
+        background-color: {Theme.SURFACE_RAISED};
+        color: {Theme.TEXT};
+        border: 1px solid {Theme.BORDER};
+        border-radius: 8px;
+        padding: 6px 10px;
+    }}
+
+    QToolButton:hover {{
+        border-color: {Theme.ACCENT};
+    }}
+
+    QToolButton:disabled {{
+        color: {Theme.TEXT_MUTED};
+    }}
+
+    QToolButton#collapseToggle {{
+        background: transparent;
+        border: none;
+        color: {Theme.ACCENT};
+        font-weight: 600;
+        padding: 4px 2px;
+        text-align: left;
+    }}
+
+    QToolButton#collapseToggle:hover {{
+        color: {Theme.ACCENT_HOVER};
+        border: none;
+        background: transparent;
     }}
     """

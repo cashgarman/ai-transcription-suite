@@ -34,7 +34,7 @@ class InputTimelineWidget(QWidget):
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self.setMinimumHeight(92)
+        self.setMinimumHeight(58)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.setMouseTracking(True)
         self._segments: list[TimelineSegment] = []
@@ -116,8 +116,8 @@ class InputTimelineWidget(QWidget):
             return []
         total = self._total_duration()
         margin = 8
-        track_top = 28
-        track_height = 34
+        track_top = 20
+        track_height = 30
         width = max(self.width() - margin * 2, 1)
         layouts: list[tuple[int, int, int, int]] = []
         x = margin
@@ -232,11 +232,11 @@ class InputTimelineWidget(QWidget):
 
         painter.setPen(QColor(Theme.TEXT_DIM))
         painter.setFont(QFont(self.font().family(), 9))
-        painter.drawText(10, 18, "Merge order →")
+        painter.drawText(10, 13, "Merge order →")
         total = self._total_duration()
         painter.drawText(
             self.width() - 140,
-            18,
+            13,
             f"Total {clock_timestamp(total)}",
         )
 
@@ -266,13 +266,13 @@ class InputTimelineWidget(QWidget):
             label = f"{index + 1}. {segment.path.name}"
             metrics = QFontMetrics(painter.font())
             elided = metrics.elidedText(label, Qt.TextElideMode.ElideRight, width - 10)
-            painter.drawText(x + 6, y + 15, elided)
+            painter.drawText(x + 6, y + 13, elided)
             duration_text = (
                 clock_timestamp(segment.duration_seconds)
                 if segment.duration_seconds
                 else "…"
             )
-            painter.drawText(x + 6, y + 28, duration_text)
+            painter.drawText(x + 6, y + 25, duration_text)
 
         if (
             self._drop_index == len(self._segments)

@@ -24,7 +24,7 @@ def test_media_source_parse_accepts_tuple_of_paths(tmp_path: Path) -> None:
     second.write_bytes(b"b")
     source = MediaSource.parse([first, second])
     assert source.cache_key() == MediaSource.parse([first, second]).cache_key()
-    assert source.cache_key() != MediaSource.parse([second, first]).cache_key()
+    assert source.cache_key() == MediaSource.parse([second, first]).cache_key()
 
 
 def test_media_source_summary_label() -> None:

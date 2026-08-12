@@ -28,7 +28,7 @@ class SettingsDialog(QDialog):
         super().__init__(parent)
         self.settings = settings
         self.store = store
-        self.setWindowTitle("Speaker Transcriber Settings")
+        self.setWindowTitle("Summit Settings")
         self.setMinimumWidth(480)
 
         self.compute_type = QComboBox()

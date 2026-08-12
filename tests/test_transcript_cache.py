@@ -79,8 +79,10 @@ def test_transcript_cache_delete(tmp_path: Path) -> None:
     source.touch()
     cache.save(sample_result(str(source.resolve())))
     assert cache.exists(source)
+    assert cache.speakers_path_for(source).is_file()
     cache.delete(source)
     assert not cache.exists(source)
+    assert not cache.speakers_path_for(source).is_file()
 
 
 def test_to_json_dict_serializes_source_files() -> None:

@@ -21,7 +21,7 @@ def main() -> int:
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
     )
     application = QApplication(sys.argv)
-    application.setApplicationName("Speaker Transcriber")
+    application.setApplicationName("Summit")
     application.setOrganizationName("SpeakerTranscriber")
 
     from speaker_transcriber.ui.theme import apply_application_theme
@@ -35,13 +35,13 @@ def main() -> int:
     application.processEvents()
 
     class BootstrapWorker(QThread):
-        status = Signal(str)
+        status = Signal(str, float)
         completed = Signal(object)
         failed = Signal(str)
 
         def run(self) -> None:
             try:
-                self.status.emit("Configuring runtime…")
+                self.status.emit("Configuring runtime…", 0.15)
                 from speaker_transcriber.cuda_setup import configure_cuda_libraries
                 from speaker_transcriber.huggingface_compat import (
                     patch_hf_hub_use_auth_token,
@@ -62,7 +62,7 @@ def main() -> int:
                 patch_torch_load_weights_only()
                 patch_speechbrain_lazy_modules()
 
-                self.status.emit("Preparing logging…")
+                self.status.emit("Preparing logging…", 0.45)
                 from speaker_transcriber.config import SettingsStore
                 from speaker_transcriber.logging_config import (
                     configure_logging,
@@ -73,7 +73,7 @@ def main() -> int:
                 logger = configure_logging(gui_queue=log_queue)
                 log_system_information(logger)
 
-                self.status.emit("Loading interface…")
+                self.status.emit("Loading interface…", 0.75)
                 from speaker_transcriber.ui.main_window import MainWindow
 
                 self.completed.emit(
@@ -111,7 +111,7 @@ def main() -> int:
         QMessageBox.critical(
             None,
             "Startup failed",
-            f"Speaker Transcriber could not finish starting:\n\n{state['error']}",
+            f"Summit could not finish starting:\n\n{state['error']}",
         )
         return 1
 
@@ -121,13 +121,13 @@ def main() -> int:
         QMessageBox.critical(
             None,
             "Startup failed",
-            "Speaker Transcriber could not finish starting.",
+            "Summit could not finish starting.",
         )
         return 1
 
-    splash.set_status("Opening window…")
+    splash.set_status("Opening window…", 0.9)
     window = result.main_window_type(result.settings_store, result.log_queue)
-    splash.set_status("Ready")
+    splash.set_status("Ready", 1.0)
     splash.finish(window)
     return application.exec()
 

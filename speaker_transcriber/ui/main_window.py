@@ -7,34 +7,42 @@ from queue import Empty, Queue
 
 from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import (
+    QAction,
     QBrush,
     QCloseEvent,
     QColor,
     QDragEnterEvent,
     QDropEvent,
+    QFontMetrics,
+    QKeySequence,
+    QPainter,
+    QPaintEvent,
     QPalette,
+    QShortcut,
     QTextCursor,
 )
 from PySide6.QtWidgets import (
+    QAbstractSpinBox,
+    QApplication,
     QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
-    QFormLayout,
-    QGridLayout,
-    QGroupBox,
+    QFrame,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QMainWindow,
     QMenu,
     QMessageBox,
     QPlainTextEdit,
     QProgressBar,
     QPushButton,
+    QSizePolicy,
     QSpinBox,
     QSplitter,
-    QTabWidget,
+    QStyle,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -56,8 +64,11 @@ from speaker_transcriber.export.common import (
     speaker_speaking_seconds,
 )
 from speaker_transcriber.export.text_exporter import render_text
+from speaker_transcriber.gpu_stats import query_gpu_stats
 from speaker_transcriber.models.summarization import RequirementsSummarizer
 from speaker_transcriber.pipeline.types import ProcessingOptions, ProgressUpdate, TranscriptResult
+from speaker_transcriber.ui.collapsible_section import CollapsibleSection
+from speaker_transcriber.ui.detachable_tab_widget import DetachableTabWidget
 from speaker_transcriber.ui.duration_probe_worker import MediaDurationProbeWorker
 from speaker_transcriber.ui.input_timeline import InputTimelineWidget
 from speaker_transcriber.ui.ollama_model_combo import OllamaModelComboBox
@@ -68,6 +79,31 @@ from speaker_transcriber.ui.worker import (
     ProcessingWorker,
     SummarizationWorker,
 )
+
+
+class ElidedLabel(QLabel):
+    """Single-line label that elides overflow instead of widening its row."""
+
+    def __init__(self, text: str = "", parent=None) -> None:
+        super().__init__(text, parent)
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        self.setToolTip(text)
+
+    def setText(self, text: str) -> None:
+        super().setText(text)
+        self.setToolTip(text)
+
+    def paintEvent(self, _event: QPaintEvent) -> None:
+        painter = QPainter(self)
+        metrics = QFontMetrics(self.font())
+        elided = metrics.elidedText(
+            self.text(),
+            Qt.TextElideMode.ElideRight,
+            self.width(),
+        )
+        painter.setPen(self.palette().color(self.foregroundRole()))
+        painter.drawText(self.rect(), int(self.alignment()), elided)
+        painter.end()
 
 
 class ExportDialog(QDialog):
@@ -96,6 +132,8 @@ class ExportDialog(QDialog):
 
 
 class MainWindow(QMainWindow):
+    _MAX_RECENT_FILES = 12
+
     def __init__(
         self,
         settings_store: SettingsStore,
@@ -113,9 +151,11 @@ class MainWindow(QMainWindow):
         self.ollama_model_worker: OllamaModelListWorker | None = None
         self.result: TranscriptResult | None = None
         self.started_at = 0.0
+        self._speaker_rename_pending = False
         self.setAcceptDrops(True)
-        self.setWindowTitle("Speaker Transcriber")
+        self.setWindowTitle("Summit")
         self.resize(self.settings.window_width, self.settings.window_height)
+        self._build_menu_bar()
         self._build_ui()
 
         self.elapsed_timer = QTimer(self)
@@ -123,18 +163,109 @@ class MainWindow(QMainWindow):
         self.log_timer = QTimer(self)
         self.log_timer.timeout.connect(self._drain_logs)
         self.log_timer.start(200)
+        self.gpu_stats_timer = QTimer(self)
+        self.gpu_stats_timer.timeout.connect(self._refresh_gpu_meters)
+        self.gpu_stats_timer.start(1000)
+        self._refresh_gpu_meters()
         self._refresh_ollama_models()
+
+    def _build_menu_bar(self) -> None:
+        menu_bar = self.menuBar()
+        file_menu = menu_bar.addMenu("&File")
+
+        self.recent_files_menu = QMenu("Recent Files…", self)
+        file_menu.addMenu(self.recent_files_menu)
+        self._rebuild_recent_files_menu()
+
+        file_menu.addSeparator()
+        quit_action = QAction("&Quit", self)
+        quit_action.setShortcut(QKeySequence.StandardKey.Quit)
+        quit_action.triggered.connect(self.close)
+        file_menu.addAction(quit_action)
+
+    def _rebuild_recent_files_menu(self) -> None:
+        self.recent_files_menu.clear()
+        recent = [
+            path
+            for path in self.settings.recent_files
+            if isinstance(path, str) and path.strip()
+        ]
+        if not recent:
+            empty = QAction("No recent files", self)
+            empty.setEnabled(False)
+            self.recent_files_menu.addAction(empty)
+        else:
+            for path_text in recent:
+                path = Path(path_text)
+                action = QAction(path.name, self)
+                action.setToolTip(str(path))
+                action.setStatusTip(str(path))
+                action.triggered.connect(
+                    lambda _checked=False, value=path_text: self._open_recent_file(value)
+                )
+                self.recent_files_menu.addAction(action)
+
+        self.recent_files_menu.addSeparator()
+        clear_action = QAction("Clear Recent Files", self)
+        clear_action.setEnabled(bool(recent))
+        clear_action.triggered.connect(self._clear_recent_files)
+        self.recent_files_menu.addAction(clear_action)
+
+    def _remember_recent_files(self, paths: list[Path]) -> None:
+        recent = [
+            item
+            for item in self.settings.recent_files
+            if isinstance(item, str) and item.strip()
+        ]
+        for path in reversed(paths):
+            if not path.is_file():
+                continue
+            resolved = str(path.resolve())
+            recent = [item for item in recent if item != resolved]
+            recent.insert(0, resolved)
+        self.settings.recent_files = recent[: self._MAX_RECENT_FILES]
+        self.settings_store.save(self.settings)
+        self._rebuild_recent_files_menu()
+
+    def _open_recent_file(self, path_text: str) -> None:
+        path = Path(path_text)
+        if not path.is_file() or not is_supported_media(path):
+            self.settings.recent_files = [
+                item for item in self.settings.recent_files if item != path_text
+            ]
+            self.settings_store.save(self.settings)
+            self._rebuild_recent_files_menu()
+            QMessageBox.warning(
+                self,
+                "Missing file",
+                "That recent file is missing or no longer supported, so it was "
+                "removed from the list.",
+            )
+            return
+        self._add_source_paths([path])
+
+    def _clear_recent_files(self) -> None:
+        self.settings.recent_files = []
+        self.settings_store.save(self.settings)
+        self._rebuild_recent_files_menu()
 
     def _build_ui(self) -> None:
         central = QWidget()
         root = QVBoxLayout(central)
+        root.setContentsMargins(10, 8, 10, 8)
+        root.setSpacing(6)
 
-        source_group = QGroupBox("Input timeline")
-        source_layout = QVBoxLayout(source_group)
+        self.setup_section = CollapsibleSection("Setup", expanded=True)
+        setup_layout = self.setup_section.content_layout()
+        setup_layout.setContentsMargins(10, 0, 10, 8)
+        setup_layout.setSpacing(6)
+
         self.input_timeline = InputTimelineWidget()
         self.input_timeline.order_changed.connect(self._update_cache_controls)
+        setup_layout.addWidget(self.input_timeline)
 
         source_button_row = QHBoxLayout()
+        source_button_row.setSpacing(6)
         add_files_button = QPushButton("Add files…")
         add_files_button.clicked.connect(self._browse_sources)
         remove_files_button = QPushButton("Remove selected")
@@ -146,12 +277,8 @@ class MainWindow(QMainWindow):
         source_button_row.addWidget(remove_files_button)
         source_button_row.addStretch(1)
         source_button_row.addWidget(self.use_cache_checkbox)
-        source_layout.addWidget(self.input_timeline)
-        source_layout.addLayout(source_button_row)
-        root.addWidget(source_group)
+        setup_layout.addLayout(source_button_row)
 
-        options_group = QGroupBox("Transcription options")
-        options_layout = QGridLayout(options_group)
         self.model_combo = QComboBox()
         self.model_combo.addItem("Medium", "medium")
         self.model_combo.addItem("Distil Large V3", "distil-large-v3")
@@ -176,38 +303,39 @@ class MainWindow(QMainWindow):
         self.max_speakers = QSpinBox()
         self.max_speakers.setRange(1, 50)
         self.max_speakers.setValue(self.settings.max_speakers or 6)
+        self.exact_speakers_field = self._inline_field("Exact", self.exact_speakers)
+        self.min_speakers_field = self._inline_field("Min", self.min_speakers)
+        self.max_speakers_field = self._inline_field("Max", self.max_speakers)
         if self.settings.num_speakers is not None:
             self.speaker_mode.setCurrentIndex(1)
         elif self.settings.min_speakers is not None or self.settings.max_speakers is not None:
             self.speaker_mode.setCurrentIndex(2)
 
-        options_layout.addWidget(QLabel("Model"), 0, 0)
-        options_layout.addWidget(self.model_combo, 1, 0)
-        options_layout.addWidget(QLabel("Language"), 0, 1)
-        options_layout.addWidget(self.language_combo, 1, 1)
-        options_layout.addWidget(QLabel("Speaker count"), 0, 2)
-        options_layout.addWidget(self.speaker_mode, 1, 2)
-        options_layout.addWidget(QLabel("Exact"), 0, 3)
-        options_layout.addWidget(self.exact_speakers, 1, 3)
-        options_layout.addWidget(QLabel("Minimum"), 0, 4)
-        options_layout.addWidget(self.min_speakers, 1, 4)
-        options_layout.addWidget(QLabel("Maximum"), 0, 5)
-        options_layout.addWidget(self.max_speakers, 1, 5)
-        root.addWidget(options_group)
-        self._speaker_mode_changed()
-
-        summary_group = QGroupBox("Summarization")
-        summary_layout = QHBoxLayout(summary_group)
-        summary_layout.addWidget(QLabel("Ollama model"))
         self.ollama_model_combo = OllamaModelComboBox()
         self.ollama_model_combo.currentIndexChanged.connect(self._on_ollama_model_changed)
         self.refresh_ollama_button = QPushButton("Refresh")
         self.refresh_ollama_button.clicked.connect(self._refresh_ollama_models)
-        summary_layout.addWidget(self.ollama_model_combo, 1)
-        summary_layout.addWidget(self.refresh_ollama_button)
-        root.addWidget(summary_group)
+
+        options_row = QHBoxLayout()
+        options_row.setSpacing(10)
+        options_row.addWidget(self._inline_field("Model", self.model_combo))
+        options_row.addWidget(self._inline_field("Language", self.language_combo))
+        options_row.addWidget(self._inline_field("Speakers", self.speaker_mode))
+        options_row.addWidget(self.exact_speakers_field)
+        options_row.addWidget(self.min_speakers_field)
+        options_row.addWidget(self.max_speakers_field)
+        options_row.addStretch(1)
+        options_row.addWidget(
+            self._inline_field("Ollama", self.ollama_model_combo, stretch=1),
+            2,
+        )
+        options_row.addWidget(self.refresh_ollama_button)
+        setup_layout.addLayout(options_row)
+        self._speaker_mode_changed()
+        root.addWidget(self.setup_section)
 
         action_row = QHBoxLayout()
+        action_row.setSpacing(6)
         self.start_button = QPushButton("Start")
         self.start_button.setObjectName("primaryButton")
         self.start_button.setDefault(True)
@@ -236,32 +364,44 @@ class MainWindow(QMainWindow):
         action_row.addWidget(self.export_button)
         root.addLayout(action_row)
 
-        status_group = QGroupBox("Processing")
-        status_layout = QGridLayout(status_group)
-        self.stage_label = QLabel("Ready")
+        status_strip = QFrame()
+        status_strip.setObjectName("statusStrip")
+        status_layout = QHBoxLayout(status_strip)
+        status_layout.setContentsMargins(10, 5, 10, 5)
+        status_layout.setSpacing(12)
+        self.stage_label = ElidedLabel("Ready")
         self.progress_bar = QProgressBar()
+        self.progress_bar.setObjectName("jobProgressBar")
         self.progress_bar.setRange(0, 1000)
-        self.vram_label = QLabel("VRAM: —")
+        self.progress_bar.setTextVisible(False)
+        self.progress_bar.setFixedHeight(8)
+        self.progress_bar.setToolTip("Processing progress")
+        self.vram_meter, self.vram_bar = self._build_status_meter("VRAM", "vramMeter")
+        self.gpu_meter, self.gpu_bar = self._build_status_meter("GPU", "gpuMeter")
         self.elapsed_label = QLabel("Elapsed: 00:00")
-        status_layout.addWidget(self.stage_label, 0, 0, 1, 2)
-        status_layout.addWidget(self.progress_bar, 1, 0, 1, 2)
-        status_layout.addWidget(self.vram_label, 2, 0)
-        status_layout.addWidget(self.elapsed_label, 2, 1, alignment=Qt.AlignmentFlag.AlignRight)
-        root.addWidget(status_group)
+        status_layout.addWidget(self.stage_label, 2)
+        status_layout.addWidget(self.progress_bar, 2)
+        status_layout.addWidget(self.vram_meter, 2)
+        status_layout.addWidget(self.gpu_meter, 2)
+        status_layout.addWidget(self.elapsed_label)
+        root.addWidget(status_strip)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
-        self.tabs = QTabWidget()
+        self.tabs = DetachableTabWidget()
         self.transcript_panel = TranscriptPanel()
         self.summary_view = QPlainTextEdit()
-        self.summary_view.setReadOnly(True)
         self.summary_view.setPlaceholderText("An optional local Ollama summary will appear here.")
-        self.tabs.addTab(self.transcript_panel, "Transcript")
-        self.tabs.addTab(self.summary_view, "Summary")
+        self.tabs.add_detachable_tab(
+            self.transcript_panel,
+            "Transcript",
+            tab_id="transcript",
+        )
+        self.tabs.add_detachable_tab(self.summary_view, "Summary", tab_id="summary")
         splitter.addWidget(self.tabs)
 
         speaker_panel = QWidget()
         speaker_layout = QVBoxLayout(speaker_panel)
-        speaker_layout.addWidget(QLabel("Speaker names"))
+        speaker_layout.addWidget(QLabel("Speakers"))
         self.speaker_table = QTableWidget(0, 3)
         self.speaker_table.setHorizontalHeaderLabels(
             ["Label", "Display name", "Spoke"]
@@ -288,47 +428,130 @@ class MainWindow(QMainWindow):
         speaker_layout.addWidget(self.speaker_table)
 
         speaker_nav_row = QHBoxLayout()
-        self.prev_speaker_entry_button = QPushButton("◀ Prev entry")
+        style = self.style()
+        self.first_speaker_entry_button = QPushButton("First")
+        self.first_speaker_entry_button.setIcon(
+            style.standardIcon(QStyle.StandardPixmap.SP_MediaSkipBackward)
+        )
+        self.first_speaker_entry_button.setToolTip(
+            "Jump to the first transcript entry for the selected speaker (Home)"
+        )
+        self.first_speaker_entry_button.setEnabled(False)
+        self.first_speaker_entry_button.clicked.connect(
+            lambda: self._goto_speaker_entry_edge(first=True)
+        )
+        self.prev_speaker_entry_button = QPushButton("Prev")
+        self.prev_speaker_entry_button.setIcon(
+            style.standardIcon(QStyle.StandardPixmap.SP_MediaSeekBackward)
+        )
         self.prev_speaker_entry_button.setToolTip(
-            "Jump to the previous transcript entry for the selected speaker"
+            "Jump to the previous transcript entry for the selected speaker "
+            "(Up / Page Up)"
         )
         self.prev_speaker_entry_button.setEnabled(False)
         self.prev_speaker_entry_button.clicked.connect(
             lambda: self._goto_speaker_entry(-1)
         )
-        self.next_speaker_entry_button = QPushButton("Next entry ▶")
+        self.next_speaker_entry_button = QPushButton("Next")
+        self.next_speaker_entry_button.setIcon(
+            style.standardIcon(QStyle.StandardPixmap.SP_MediaSeekForward)
+        )
         self.next_speaker_entry_button.setToolTip(
-            "Jump to the next transcript entry for the selected speaker"
+            "Jump to the next transcript entry for the selected speaker "
+            "(Down / Page Down)"
         )
         self.next_speaker_entry_button.setEnabled(False)
         self.next_speaker_entry_button.clicked.connect(
             lambda: self._goto_speaker_entry(1)
         )
+        self.last_speaker_entry_button = QPushButton("Last")
+        self.last_speaker_entry_button.setIcon(
+            style.standardIcon(QStyle.StandardPixmap.SP_MediaSkipForward)
+        )
+        self.last_speaker_entry_button.setToolTip(
+            "Jump to the last transcript entry for the selected speaker (End)"
+        )
+        self.last_speaker_entry_button.setEnabled(False)
+        self.last_speaker_entry_button.clicked.connect(
+            lambda: self._goto_speaker_entry_edge(first=False)
+        )
+        speaker_nav_row.addWidget(self.first_speaker_entry_button)
         speaker_nav_row.addWidget(self.prev_speaker_entry_button)
         speaker_nav_row.addWidget(self.next_speaker_entry_button)
+        speaker_nav_row.addWidget(self.last_speaker_entry_button)
         speaker_layout.addLayout(speaker_nav_row)
 
-        apply_names = QPushButton("Apply names")
-        apply_names.clicked.connect(self._apply_speaker_names)
-        speaker_layout.addWidget(apply_names)
         splitter.addWidget(speaker_panel)
         splitter.setStretchFactor(0, 4)
         splitter.setStretchFactor(1, 1)
         root.addWidget(splitter, 1)
 
-        self.log_group = QGroupBox("Error and processing log")
-        self.log_group.setCheckable(True)
-        self.log_group.setChecked(False)
+        self.log_section = CollapsibleSection(
+            "Error and processing log",
+            expanded=False,
+        )
         self.log_output = QPlainTextEdit()
         self.log_output.setReadOnly(True)
-        log_layout = QVBoxLayout(self.log_group)
-        log_layout.addWidget(self.log_output)
-        self.log_group.toggled.connect(self.log_output.setVisible)
-        self.log_output.setVisible(False)
-        root.addWidget(self.log_group)
+        self.log_output.setMinimumHeight(120)
+        self.log_output.setPlaceholderText("Processing messages and errors will appear here.")
+        self.log_section.add_widget(self.log_output)
+        root.addWidget(self.log_section)
 
         self.setCentralWidget(central)
+        self._bind_speaker_nav_shortcuts()
         self._update_cache_controls()
+
+    @staticmethod
+    def _inline_field(label_text: str, widget: QWidget, stretch: int = 0) -> QWidget:
+        container = QWidget()
+        layout = QHBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+        caption = QLabel(label_text)
+        caption.setObjectName("fieldCaption")
+        layout.addWidget(caption)
+        layout.addWidget(widget, stretch)
+        return container
+
+    def _build_status_meter(
+        self,
+        title: str,
+        object_name: str,
+    ) -> tuple[QWidget, QProgressBar]:
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(2)
+        caption = QLabel(title)
+        caption.setObjectName("meterCaption")
+        bar = QProgressBar()
+        bar.setObjectName(object_name)
+        bar.setRange(0, 1000)
+        bar.setValue(0)
+        bar.setTextVisible(False)
+        bar.setFixedHeight(8)
+        layout.addWidget(caption)
+        layout.addWidget(bar)
+        return container, bar
+
+    def _refresh_gpu_meters(self) -> None:
+        stats = query_gpu_stats()
+        if not stats.available:
+            self.vram_bar.setValue(0)
+            self.gpu_bar.setValue(0)
+            self.vram_bar.setToolTip("GPU VRAM unavailable")
+            self.gpu_bar.setToolTip("GPU compute unavailable")
+            return
+        vram_fraction = (
+            stats.vram_used_mb / stats.vram_total_mb if stats.vram_total_mb else 0.0
+        )
+        self.vram_bar.setValue(round(max(0.0, min(vram_fraction, 1.0)) * 1000))
+        self.gpu_bar.setValue(round(stats.gpu_util_percent * 10))
+        self.vram_bar.setToolTip(
+            f"VRAM {stats.vram_used_mb / 1024:.1f} / "
+            f"{stats.vram_total_mb / 1024:.1f} GB"
+        )
+        self.gpu_bar.setToolTip(f"GPU compute {stats.gpu_util_percent}%")
 
     def _cache_preference_changed(self, checked: bool) -> None:
         self.settings.use_cached_transcript = checked
@@ -377,6 +600,7 @@ class MainWindow(QMainWindow):
     def _add_source_paths(self, paths: list[Path]) -> None:
         self.input_timeline.append_paths(paths)
         self._probe_durations(paths)
+        self._remember_recent_files(paths)
         self._update_cache_controls()
 
     def _probe_durations(self, paths: list[Path]) -> None:
@@ -430,6 +654,9 @@ class MainWindow(QMainWindow):
         self.exact_speakers.setEnabled(mode == 1)
         self.min_speakers.setEnabled(mode == 2)
         self.max_speakers.setEnabled(mode == 2)
+        self.exact_speakers_field.setVisible(mode == 1)
+        self.min_speakers_field.setVisible(mode == 2)
+        self.max_speakers_field.setVisible(mode == 2)
 
     def _browse_sources(self) -> None:
         paths, _ = QFileDialog.getOpenFileNames(
@@ -513,8 +740,8 @@ class MainWindow(QMainWindow):
         self.summary_view.clear()
         self.progress_bar.setValue(1000)
         self.stage_label.setText(self._cache_status_message(result, sources))
-        self.vram_label.setText("VRAM: —")
         self.elapsed_label.setText("Elapsed: 00:00")
+        self._refresh_gpu_meters()
         self._show_result(sources)
         self._set_busy(False)
 
@@ -563,8 +790,10 @@ class MainWindow(QMainWindow):
         self.progress_bar.setValue(round(update.progress * 1000))
         self.stage_label.setText(update.message)
         if update.vram_total_mb:
-            self.vram_label.setText(
-                f"VRAM: {update.vram_used_mb / 1024:.1f} / "
+            vram_fraction = update.vram_used_mb / update.vram_total_mb
+            self.vram_bar.setValue(round(max(0.0, min(vram_fraction, 1.0)) * 1000))
+            self.vram_bar.setToolTip(
+                f"VRAM {update.vram_used_mb / 1024:.1f} / "
                 f"{update.vram_total_mb / 1024:.1f} GB"
             )
         self.elapsed_label.setText(
@@ -573,10 +802,16 @@ class MainWindow(QMainWindow):
 
     def _on_completed(self, result: TranscriptResult) -> None:
         self.result = result
+        sources = self._source_paths()
+        self._apply_session_speaker_names(sources or None)
         try:
-            self.transcript_cache.save(result)
+            self.transcript_cache.save(self.result)
         except OSError as exc:
             self.log_output.appendPlainText(f"Failed to save transcript cache: {exc}")
+        try:
+            self._persist_speaker_names(sources or None)
+        except OSError as exc:
+            self.log_output.appendPlainText(f"Failed to save speaker names: {exc}")
         self.progress_bar.setValue(1000)
         configuration = result.fallback_config
         self.stage_label.setText(
@@ -606,7 +841,7 @@ class MainWindow(QMainWindow):
     def _on_failed(self, message: str) -> None:
         self.stage_label.setText("Processing failed")
         self.log_output.appendPlainText(message)
-        self.log_group.setChecked(True)
+        self.log_section.set_expanded(True)
         QMessageBox.critical(self, "Processing failed", message)
         self._set_busy(False)
 
@@ -675,15 +910,67 @@ class MainWindow(QMainWindow):
 
     def _update_speaker_nav_controls(self) -> None:
         enabled = self._selected_speaker_label() is not None and self.result is not None
+        self.first_speaker_entry_button.setEnabled(enabled)
         self.prev_speaker_entry_button.setEnabled(enabled)
         self.next_speaker_entry_button.setEnabled(enabled)
+        self.last_speaker_entry_button.setEnabled(enabled)
 
-    def _goto_speaker_entry(self, delta: int) -> None:
+    def _speaker_nav_shortcuts_blocked(self) -> bool:
+        focus = QApplication.focusWidget()
+        if focus is None:
+            return False
+        # Keep typing intact in name fields and numeric controls; allow
+        # navigation keys while the transcript itself is focused.
+        return isinstance(focus, (QLineEdit, QAbstractSpinBox))
+
+    def _bind_speaker_nav_shortcuts(self) -> None:
+        bindings = (
+            (
+                Qt.Key.Key_Home,
+                lambda: self._goto_speaker_entry_edge(first=True, from_shortcut=True),
+            ),
+            (
+                Qt.Key.Key_End,
+                lambda: self._goto_speaker_entry_edge(first=False, from_shortcut=True),
+            ),
+            (Qt.Key.Key_Up, lambda: self._goto_speaker_entry(-1, from_shortcut=True)),
+            (
+                Qt.Key.Key_PageUp,
+                lambda: self._goto_speaker_entry(-1, from_shortcut=True),
+            ),
+            (Qt.Key.Key_Down, lambda: self._goto_speaker_entry(1, from_shortcut=True)),
+            (
+                Qt.Key.Key_PageDown,
+                lambda: self._goto_speaker_entry(1, from_shortcut=True),
+            ),
+        )
+        for key, callback in bindings:
+            shortcut = QShortcut(QKeySequence(key), self)
+            shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
+            shortcut.activated.connect(callback)
+
+    def _goto_speaker_entry(self, delta: int, *, from_shortcut: bool = False) -> None:
+        if from_shortcut and self._speaker_nav_shortcuts_blocked():
+            return
         label = self._selected_speaker_label()
         if not label:
             return
-        self.tabs.setCurrentWidget(self.transcript_panel)
+        self.tabs.ensure_visible(self.transcript_panel)
         self.transcript_panel.goto_adjacent_speaker_entry(label, delta)
+
+    def _goto_speaker_entry_edge(
+        self,
+        *,
+        first: bool,
+        from_shortcut: bool = False,
+    ) -> None:
+        if from_shortcut and self._speaker_nav_shortcuts_blocked():
+            return
+        label = self._selected_speaker_label()
+        if not label:
+            return
+        self.tabs.ensure_visible(self.transcript_panel)
+        self.transcript_panel.goto_speaker_entry_edge(label, first=first)
 
     def _on_speaker_context_menu(self, position) -> None:
         index = self.speaker_table.indexAt(position)
@@ -848,12 +1135,37 @@ class MainWindow(QMainWindow):
     def _on_speaker_name_edited(self, item: QTableWidgetItem) -> None:
         if self.result is None or item.column() != 1:
             return
-        self._apply_speaker_names(save_only=False)
+        if self._speaker_rename_pending:
+            return
+        self._speaker_rename_pending = True
+        selected_speaker = self._selected_speaker_label()
+        self.tabs.ensure_visible(self.transcript_panel)
+        self.transcript_panel.set_busy(True)
+        QApplication.processEvents()
+        QTimer.singleShot(
+            0,
+            lambda: self._finish_speaker_rename(selected_speaker),
+        )
 
-    def _apply_speaker_names(self, save_only: bool = False) -> None:
+    def _finish_speaker_rename(self, selected_speaker: str | None) -> None:
+        try:
+            self._apply_speaker_names(
+                save_only=False,
+                selected_speaker=selected_speaker,
+            )
+        finally:
+            self.transcript_panel.set_busy(False)
+            self._speaker_rename_pending = False
+
+    def _apply_speaker_names(
+        self,
+        save_only: bool = False,
+        selected_speaker: str | None = None,
+    ) -> None:
         if self.result is None:
             return
-        selected_speaker = self._selected_speaker_label()
+        if selected_speaker is None:
+            selected_speaker = self._selected_speaker_label()
         for row in range(self.speaker_table.rowCount()):
             label_item = self.speaker_table.item(row, 0)
             name_item = self.speaker_table.item(row, 1)
@@ -868,6 +1180,7 @@ class MainWindow(QMainWindow):
                     if label_item and label_item.text() == selected_speaker:
                         self.speaker_table.selectRow(row)
                         break
+                self.transcript_panel.highlight_speaker(selected_speaker)
         try:
             self.transcript_cache.save(self.result)
         except OSError as exc:
@@ -932,7 +1245,7 @@ class MainWindow(QMainWindow):
             return
         self._persist_ollama_model_selection()
         self.summary_view.setPlainText("Generating summary…\n")
-        self.tabs.setCurrentWidget(self.summary_view)
+        self.tabs.ensure_visible(self.summary_view)
         self.progress_bar.setValue(0)
         self.started_at = time.monotonic()
         self.elapsed_timer.start(1000)
@@ -983,7 +1296,7 @@ class MainWindow(QMainWindow):
     def _summary_failed(self, message: str) -> None:
         self.summary_view.setPlainText(f"Summary failed: {message}")
         self.log_output.appendPlainText(f"Summarization failed: {message}")
-        self.log_group.setChecked(True)
+        self.log_section.set_expanded(True)
         self.progress_bar.setValue(0)
         self.stage_label.setText("Summary failed")
         self._set_busy(False)
@@ -1035,6 +1348,7 @@ class MainWindow(QMainWindow):
                 event.ignore()
                 return
             self.summary_worker.wait(5000)
+        self.tabs.dock_all()
         self.settings.window_width = self.width()
         self.settings.window_height = self.height()
         self._persist_ollama_model_selection(save=False)

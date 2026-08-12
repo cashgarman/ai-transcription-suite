@@ -52,16 +52,17 @@ class MediaSource:
     def cache_key(self) -> str:
         if not self.is_multi:
             return self.primary_path.stem
+        ordered = tuple(sorted(self.paths, key=lambda item: str(item)))
         payload = [
             {
                 "path": str(path),
                 "mtime": path.stat().st_mtime,
                 "size": path.stat().st_size,
             }
-            for path in self.paths
+            for path in ordered
         ]
         digest = hashlib.sha256(json.dumps(payload).encode()).hexdigest()[:16]
-        return f"{self.primary_path.stem}_{digest}"
+        return f"{ordered[0].stem}_{digest}"
 
     def summary_label(self) -> str:
         if not self.is_multi:
