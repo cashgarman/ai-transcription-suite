@@ -24,6 +24,7 @@ MANIFEST
 # Virtual Environments
 venv/
 venv_summarizer/
+.venv/
 ENV/
 env/
 env.bak/
@@ -53,6 +54,8 @@ output/
 
 # Ollama models (these are managed by Ollama)
 models/
+.cache/
+huggingface/
 
 # Logs
 logs/

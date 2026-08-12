@@ -1,9 +1,3 @@
 @echo off
-:: Activate the virtual environment
-call .\venv_summarizer\Scripts\activate.bat
-
-:: Run the GUI application
-python summarize_gui.py
-
-:: Deactivate the virtual environment
-call deactivate 
+echo This launcher is retained for compatibility. Starting Speaker Transcriber...
+call "%~dp0scripts\run_windows.bat"

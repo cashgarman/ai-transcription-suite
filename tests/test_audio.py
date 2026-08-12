@@ -1,0 +1,93 @@
+import io
+import subprocess
+import threading
+from types import SimpleNamespace
+
+from speaker_transcriber.audio import ffmpeg
+
+
+def test_is_supported_media_accepts_audio_only_formats() -> None:
+    assert ffmpeg.is_supported_media("recording.mp3")
+    assert ffmpeg.is_supported_media("recording.MP3")
+    assert ffmpeg.is_supported_media("/media/podcast.wav")
+    assert not ffmpeg.is_supported_media("notes.txt")
+
+
+def test_media_file_dialog_filter_includes_mp3_and_uses_semicolons() -> None:
+    dialog_filter = ffmpeg.media_file_dialog_filter()
+    assert "*.mp3" in dialog_filter
+    assert "Audio files" in dialog_filter
+    assert "*.mp4" in dialog_filter
+    assert "Video files" in dialog_filter
+    assert ";;" in dialog_filter
+
+
+def test_probe_media_reads_duration_and_audio_stream(tmp_path, monkeypatch) -> None:
+    source = tmp_path / "meeting.mp4"
+    source.write_bytes(b"media")
+    monkeypatch.setattr(ffmpeg, "_require_executable", lambda name: name)
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(
+            returncode=0,
+            stdout='{"format":{"duration":"12.5"},"streams":[{"codec_type":"audio"}]}',
+            stderr="",
+        ),
+    )
+    result = ffmpeg.probe_media(source)
+    assert result.duration_seconds == 12.5
+    assert result.has_audio
+
+
+def test_probe_media_accepts_mp3_extension(tmp_path, monkeypatch) -> None:
+    source = tmp_path / "recording.mp3"
+    source.write_bytes(b"audio")
+    monkeypatch.setattr(ffmpeg, "_require_executable", lambda name: name)
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(
+            returncode=0,
+            stdout='{"format":{"duration":"42.0"},"streams":[{"codec_type":"audio"}]}',
+            stderr="",
+        ),
+    )
+    result = ffmpeg.probe_media(source)
+    assert result.duration_seconds == 42.0
+    assert result.has_audio
+
+
+def test_extract_audio_reports_ffmpeg_progress(tmp_path, monkeypatch) -> None:
+    class FakeProcess:
+        def __init__(self) -> None:
+            self.stdout = io.StringIO("out_time_ms=5000000\nprogress=end\n")
+            self.stderr = io.StringIO("")
+            self.returncode = None
+
+        def poll(self):
+            if self.stdout.tell() == len(self.stdout.getvalue()):
+                return 0
+            return None
+
+        def wait(self, timeout=None):
+            self.returncode = 0
+            return 0
+
+        def terminate(self):
+            self.returncode = 0
+
+        def kill(self):
+            self.returncode = 1
+
+    monkeypatch.setattr(ffmpeg, "_require_executable", lambda name: name)
+    monkeypatch.setattr(subprocess, "Popen", lambda *args, **kwargs: FakeProcess())
+    progress = []
+    ffmpeg.extract_audio(
+        tmp_path / "input.mp4",
+        tmp_path / "audio.wav",
+        10.0,
+        threading.Event(),
+        progress.append,
+    )
+    assert progress == [0.5, 1.0]
