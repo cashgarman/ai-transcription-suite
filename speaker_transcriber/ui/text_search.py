@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from PySide6.QtCore import QEvent, Qt, Signal
 from PySide6.QtGui import (
     QColor,
@@ -23,6 +25,8 @@ from PySide6.QtWidgets import (
 
 from speaker_transcriber.ui.theme import Theme
 
+
+LOGGER = logging.getLogger("speaker_transcriber.ui.search")
 
 _MATCH_BACKGROUND = QColor("#C9A44A")
 _CURRENT_BACKGROUND = QColor(Theme.ACCENT)
@@ -155,6 +159,9 @@ class TextSearchBar(QWidget):
     def query(self) -> str:
         return self._input.text()
 
+    def set_query(self, query: str) -> None:
+        self._input.setText(query)
+
     def clear_query(self) -> None:
         self._input.clear()
 
@@ -232,6 +239,26 @@ class SearchableTextPanel(QWidget):
     def clear_search(self) -> None:
         self.search_bar.clear_query()
 
+    def match_status(self) -> tuple[int, int]:
+        """The current match and the total, as shown next to the search box."""
+        return self._finder.status()
+
+    def refresh_query(self) -> None:
+        """Re-run the current query against the document that is on screen.
+
+        Replacing a document does not always deliver textChanged before the
+        matches are needed, so callers that swap the text call this directly.
+        """
+        query = self.search_bar.query()
+        if not query:
+            return
+        self._finder.set_query(
+            self.text_edit.document(),
+            query,
+            from_position=self.text_edit.textCursor().position(),
+        )
+        self._apply(reveal=False)
+
     def _bind_shortcuts(self) -> None:
         find_shortcut = QShortcut(QKeySequence.StandardKey.Find, self)
         find_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
@@ -266,8 +293,21 @@ class SearchableTextPanel(QWidget):
     def _apply(self, *, reveal: bool) -> None:
         self.text_edit.setExtraSelections(self._finder.extra_selections())
         self.search_bar.set_match_status(*self._finder.status())
+        self._log_empty_result()
         if reveal:
             self._reveal_current()
+
+    def _log_empty_result(self) -> None:
+        """Record misses, so a report of "no matches for a visible word" is checkable."""
+        query = self._finder.query
+        if not query or self._finder.matches:
+            return
+        LOGGER.debug(
+            "No matches for a %d character query in a %d character document (%s)",
+            len(query),
+            self.text_edit.document().characterCount(),
+            self.objectName() or type(self).__name__,
+        )
 
     def _reveal_current(self) -> None:
         match = self._finder.current_cursor()

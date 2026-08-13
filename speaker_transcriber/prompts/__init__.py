@@ -11,7 +11,6 @@ PROMPT_FILENAMES = {
     "system": "system.txt",
     "chunk": "chunk.txt",
     "merge": "merge.txt",
-    "compact": "compact.txt",
     "validate": "validate.txt",
     "continue": "continue.txt",
     "format": "format.txt",

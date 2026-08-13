@@ -698,6 +698,7 @@ class MainWindow(QMainWindow):
             self.summary_view,
             placeholder="Search summary…",
         )
+        self.summary_panel.setObjectName("summaryPanel")
         self.tabs.add_detachable_tab(
             self.transcript_panel,
             "Transcript",
@@ -1497,6 +1498,7 @@ class MainWindow(QMainWindow):
         self.result = result
         self.transcript_panel.clear()
         self.summary_view.clear()
+        self.summary_panel.clear_search()
         self.summary_markdown = ""
         self.progress_bar.setValue(1000)
         self._set_stage_status(self._cache_status_message(result, sources))
@@ -1768,11 +1770,24 @@ class MainWindow(QMainWindow):
         shortcut.activated.connect(self._focus_current_tab_search)
 
     def _focus_current_tab_search(self) -> None:
-        current = self.tabs.currentWidget()
-        if current is self.transcript_panel:
-            self.transcript_panel.focus_search()
-        elif current is self.summary_panel:
-            self.summary_panel.focus_search()
+        """Ctrl+F belongs to the panel the user is in, docked or in its own window."""
+        panel = self._searchable_panel(QApplication.focusWidget())
+        if panel is None:
+            panel = self._searchable_panel(self.tabs.current_content())
+        if panel is None:
+            return
+        self.tabs.ensure_visible(panel)
+        panel.focus_search()
+
+    def _searchable_panel(self, widget: QWidget | None) -> QWidget | None:
+        """The transcript or summary panel that owns a widget, if either does."""
+        panels = (self.transcript_panel, self.summary_panel)
+        current = widget
+        while current is not None:
+            if current in panels:
+                return current
+            current = current.parentWidget()
+        return None
 
     def _goto_speaker_entry(self, delta: int, *, from_shortcut: bool = False) -> None:
         if from_shortcut and self._speaker_nav_shortcuts_blocked():
@@ -2190,6 +2205,7 @@ class MainWindow(QMainWindow):
         self.summary_markdown = markdown.strip()
         if self.summary_markdown:
             self.summary_view.setMarkdown(self.summary_markdown)
+            self.summary_panel.refresh_query()
 
     def _restore_cached_summary(self, sources: list[Path] | None = None) -> None:
         if is_usable_summary_markdown(self.summary_markdown):
@@ -2303,7 +2319,8 @@ class MainWindow(QMainWindow):
         self._pdf_streaming_summary = not bool(existing_markdown)
         if self._pdf_streaming_summary:
             self.summary_view.setPlainText("Generating summary…\n")
-            self.tabs.ensure_visible(self.summary_view)
+            self.summary_panel.clear_search()
+            self.tabs.ensure_visible(self.summary_panel)
         self.progress_bar.setValue(0)
         self.started_at = time.monotonic()
         self.elapsed_timer.start(1000)
@@ -2342,6 +2359,7 @@ class MainWindow(QMainWindow):
         self.summary_markdown = self._named_summary_markdown(text.strip())
         if self.summary_markdown:
             self.summary_view.setMarkdown(self.summary_markdown)
+            self.summary_panel.refresh_query()
             self._persist_summary(self.summary_markdown)
 
     def _pdf_export_completed(self, destination: str) -> None:
@@ -2384,7 +2402,8 @@ class MainWindow(QMainWindow):
         self._persist_ollama_model_selection()
         self._apply_speaker_names(save_only=True)
         self.summary_view.setPlainText("Generating summary…\n")
-        self.tabs.ensure_visible(self.summary_view)
+        self.summary_panel.clear_search()
+        self.tabs.ensure_visible(self.summary_panel)
         self.progress_bar.setValue(0)
         self.started_at = time.monotonic()
         self.elapsed_timer.start(1000)
@@ -2427,6 +2446,7 @@ class MainWindow(QMainWindow):
         if text.strip():
             self.summary_markdown = self._named_summary_markdown(text.strip())
             self.summary_view.setMarkdown(self.summary_markdown)
+            self.summary_panel.refresh_query()
             self._persist_summary(self.summary_markdown)
         else:
             self.summary_markdown = ""

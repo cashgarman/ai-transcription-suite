@@ -6,6 +6,12 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from speaker_transcriber.models.notes_assembly import (
+    assemble_notes,
+    fit_titles,
+    recent_lines,
+    topic_titles,
+)
 from speaker_transcriber.prompts import get_prompt
 
 
@@ -23,17 +29,8 @@ MIN_PREDICT_TOKENS = 128
 MAX_CONTINUE_PASSES = 2
 TRUNCATION_CAP_RATIO = 0.90
 
-DETAIL_SECTION_TITLE = "Detailed Notes"
-
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+")
-_KEEP_PARAGRAPH = re.compile(
-    r"(participant|decision|action|risk|question|blocker|dependenc|"
-    r"deadline|speaker_|owner|\*\*|^\s*\|)",
-    re.IGNORECASE | re.MULTILINE,
-)
 _REQUIRED_SECTIONS = ("action items", "open questions")
-_ANY_HEADING = re.compile(r"^\s{0,3}#{1,6}\s+(.*?)\s*#*\s*$")
-_BOLD_ONLY_LINE = re.compile(r"^\s{0,3}(?:\*\*|__)(.+?)(?:\*\*|__)\s*:?\s*$")
 _OOM_PATTERN = re.compile(
     r"out of memory"
     r"|\boom\b"
@@ -155,7 +152,6 @@ class RequirementsSummarizer:
     def _num_predict(self, stage: str = "extract") -> int:
         fractions = {
             "extract": EXTRACT_PREDICT_FRACTION,
-            "compact": EXTRACT_PREDICT_FRACTION,
             "merge": FRONT_MATTER_PREDICT_FRACTION,
             "validate": FRONT_MATTER_PREDICT_FRACTION,
             "format": DOCUMENT_PREDICT_FRACTION,
@@ -184,7 +180,7 @@ class RequirementsSummarizer:
         sized = int(min(budget * CHUNK_BUDGET_FRACTION, budget - reserved))
         return max(int(budget * MIN_CHUNK_FRACTION), sized)
 
-    def _compact_char_budget(self) -> int:
+    def _running_char_budget(self) -> int:
         remaining = (
             self._prompt_char_budget("extract")
             - self._chunk_char_limit()
@@ -447,19 +443,6 @@ class RequirementsSummarizer:
             continued = self._join_continuation(continued, addition)
         return continued
 
-    def _extractive_trim(self, text: str, budget: int, hard: bool = True) -> str:
-        stripped = text.strip()
-        if len(stripped) <= budget:
-            return stripped
-        paragraphs = [part.strip() for part in stripped.split("\n\n") if part.strip()]
-        kept = [part for part in paragraphs if _KEEP_PARAGRAPH.search(part)]
-        candidate = "\n\n".join(kept) if kept else stripped
-        if len(candidate) <= budget:
-            return candidate
-        if not hard:
-            return candidate
-        return candidate[-budget:].lstrip()
-
     def _merge(
         self,
         sections: list[str],
@@ -499,85 +482,42 @@ class RequirementsSummarizer:
         )
         return result
 
-    def _normalize_extract_body(self, extract: str) -> str:
-        """Demote extract headings so stitched notes cannot split the document."""
-        lines: list[str] = []
-        for line in extract.strip().splitlines():
-            heading = _ANY_HEADING.match(line)
-            if heading is not None:
-                title = heading.group(1).strip()
-                lines.append(f"### {title}" if title else "")
-                continue
-            bold = _BOLD_ONLY_LINE.match(line)
-            if bold is not None:
-                lines.append(f"### {bold.group(1).strip()}")
-                continue
-            lines.append(line)
-        return "\n".join(lines).strip()
-
     def _assemble_document(self, front_matter: str, extracts: list[str]) -> str:
-        """Join the generated overview with the verbatim section notes."""
-        parts = [front_matter.strip()]
-        total = len(extracts)
-        for index, extract in enumerate(extracts, start=1):
-            body = self._normalize_extract_body(extract)
-            if not body:
-                continue
-            if total > 1:
-                heading = f"## {DETAIL_SECTION_TITLE} — Part {index} of {total}"
-            else:
-                heading = f"## {DETAIL_SECTION_TITLE}"
-            parts.append(f"{heading}\n\n{body}")
-        return "\n\n".join(part for part in parts if part).strip()
+        """Join the generated overview with one merged body of section notes."""
+        return assemble_notes(front_matter, extracts)
 
-    def _compact_running(
-        self,
-        running: str,
-        addition: str = "",
-        on_chunk: Callable[[str], None] | None = None,
-        on_reasoning: Callable[[int], None] | None = None,
-    ) -> str:
-        combined = running.strip()
-        extra = addition.strip()
-        if extra:
-            combined = f"{combined}\n\n{extra}".strip() if combined else extra
-        budget = self._compact_char_budget()
-        if len(combined) <= budget:
-            return combined
-        trimmed = self._extractive_trim(combined, budget, hard=False)
-        if len(trimmed) <= budget:
-            LOGGER.info(
-                "Trimmed running context extractively from %d to %d characters",
-                len(combined),
-                len(trimmed),
+    def _running_outline(self, extracts: list[str]) -> str:
+        """Background for the next segment: topics so far, plus the latest notes.
+
+        This is deliberately not the earlier extracts themselves. Handing the
+        model back its own Participants, Decisions, and Action items blocks is
+        what made it copy them into every segment.
+        """
+        if not extracts:
+            return ""
+        budget = self._running_char_budget()
+        parts: list[str] = []
+        titles = topic_titles(extracts)
+        if titles:
+            parts.append(
+                "Topics already recorded: " + fit_titles(titles, int(budget * 0.5))
             )
-            return trimmed
-        LOGGER.info(
-            "Compacting running context with model (%d characters, budget %d)",
-            len(combined),
-            budget,
-        )
-        started = time.monotonic()
-        compacted = self._generate_stream(
-            f"{get_prompt('compact')}\n\n{combined}",
-            self._num_predict("compact"),
-            on_chunk,
-            on_reasoning,
-        ).strip()
-        LOGGER.info(
-            "Compact complete in %.1f seconds (%d characters)",
-            time.monotonic() - started,
-            len(compacted),
-        )
-        if compacted and len(compacted) <= budget:
-            return compacted
-        return self._extractive_trim(compacted or combined, budget)
+        used = sum(len(part) + 2 for part in parts)
+        tail = recent_lines(extracts[-1], max(0, budget - used - 40))
+        if tail:
+            parts.append("Where the previous segment left off:\n" + tail)
+        outline = "\n\n".join(parts).strip()
+        return outline[:budget].rstrip() if len(outline) > budget else outline
 
     def _chunk_prompt(self, chunk: str, running: str, is_last: bool) -> str:
         marker = "[END OF TRANSCRIPT]" if is_last else "[MORE SEGMENTS FOLLOW]"
         parts = [get_prompt("chunk")]
         if running:
-            parts.append("## Context from earlier in this meeting\n\n" + running)
+            parts.append(
+                "## Already recorded, background only\n\n"
+                "Do not repeat any of this. Write notes only for what is new in "
+                "the segment below.\n\n" + running
+            )
             parts.append(
                 "## New transcript segment (this is a continuation, not the end "
                 "unless marked END OF TRANSCRIPT)\n\n" + chunk
@@ -762,12 +702,7 @@ class RequirementsSummarizer:
                 )
                 extracts.append(section_summary)
                 if not is_last:
-                    running = self._compact_running(
-                        running,
-                        section_summary,
-                        on_chunk,
-                        on_reasoning,
-                    )
+                    running = self._running_outline(extracts)
                 emit_progress(
                     self.CHUNK_STAGE_END * (index / total_chunks),
                     f"Completed section {index} of {total_chunks}",

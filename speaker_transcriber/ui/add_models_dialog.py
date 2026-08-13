@@ -100,6 +100,7 @@ class AddModelsDialog(QDialog):
         self.table.itemDoubleClicked.connect(self._open_family)
 
         self.status = QLabel("Loading catalog…")
+        self.status.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.hint = QLabel(self._hint_text())
         self.hint.setWordWrap(True)
         self.hint.setObjectName("fieldCaption")
@@ -136,14 +137,13 @@ class AddModelsDialog(QDialog):
         buttons = QHBoxLayout()
         buttons.addWidget(self.download_button)
         buttons.addWidget(self.cancel_button)
-        buttons.addStretch(1)
+        buttons.addWidget(self.status, 1)
         buttons.addWidget(close_button)
 
         layout = QVBoxLayout(self)
         layout.addLayout(search_row)
         layout.addWidget(self.hint)
         layout.addWidget(self.table, 1)
-        layout.addWidget(self.status)
         layout.addWidget(self.disk_label)
         layout.addWidget(self.disk_bar)
         layout.addLayout(progress_row)
@@ -354,9 +354,9 @@ class AddModelsDialog(QDialog):
 
     def _on_download_completed(self) -> None:
         self.cancel_button.setEnabled(False)
-        self.progress.setValue(1000)
-        self.progress_label.setText("100%")
-        self.eta_label.setText("ETA 0s")
+        self.progress.setValue(0)
+        self.progress_label.setText("0%")
+        self.eta_label.setText("ETA —")
         self.status.setText("Download complete")
         self._update_download_enabled()
         self._refresh_disk()

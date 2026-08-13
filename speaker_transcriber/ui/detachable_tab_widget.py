@@ -162,6 +162,11 @@ class DetachableTabWidget(QTabWidget):
         entry.window.raise_()
         entry.window.activateWindow()
 
+    def current_content(self) -> QWidget | None:
+        """The current tab's content, even while it lives in its own window."""
+        entry = self._entry_at(self.currentIndex())
+        return entry.content if entry is not None else self.currentWidget()
+
     def ensure_visible(self, content: QWidget) -> None:
         """Bring a tab's content to the front, docked or floating."""
         entry = self._entry_for_widget(content)

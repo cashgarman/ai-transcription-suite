@@ -1,7 +1,6 @@
 import pytest
 
 from speaker_transcriber.models.summarization import (
-    DETAIL_SECTION_TITLE,
     EXTRACT_PREDICT_FRACTION,
     FRONT_MATTER_PREDICT_FRACTION,
     DOCUMENT_PREDICT_FRACTION,
@@ -116,7 +115,7 @@ def test_budgets_scale_with_the_selected_context() -> None:
         small._chunk_char_limit() * ratio, rel=0.02
     )
     assert large._prompt_char_budget("extract") > small._prompt_char_budget("extract")
-    assert large._compact_char_budget() > small._compact_char_budget()
+    assert large._running_char_budget() > small._running_char_budget()
 
 
 def test_document_stages_use_expected_num_predict() -> None:
@@ -160,8 +159,8 @@ def test_summarize_stitches_every_extract_into_the_document() -> None:
     transcript = f"{paragraph}\n\n{paragraph} Jordan asks about GAS."
     client = RecordingClient(
         [
-            "**Discussion**\n- Alex explained UNIQUE_ALPHA in detail.",
-            "**Discussion**\n- Jordan raised UNIQUE_BETA as a blocker.",
+            "## Grid Engine\n- Alex explained UNIQUE_ALPHA in detail.",
+            "## Ability System\n- Jordan raised UNIQUE_BETA as a blocker.",
             FRONT_MATTER,
             FRONT_MATTER,
         ]
@@ -172,14 +171,16 @@ def test_summarize_stitches_every_extract_into_the_document() -> None:
     assert "UNIQUE_ALPHA" in result
     assert "UNIQUE_BETA" in result
     assert result.startswith("# Weekly Sync")
-    assert f"## {DETAIL_SECTION_TITLE} — Part 1 of 2" in result
-    assert f"## {DETAIL_SECTION_TITLE} — Part 2 of 2" in result
+    assert "## Grid Engine" in result
+    assert "## Ability System" in result
+    assert "Part 1 of 2" not in result
 
     chunk_prompts = [
         call["prompt"] for call in client.calls if get_prompt("chunk") in call["prompt"]
     ]
     assert len(chunk_prompts) == 2
-    assert "Context from earlier in this meeting" in chunk_prompts[1]
+    assert "Already recorded, background only" in chunk_prompts[1]
+    assert "Topics already recorded: Grid Engine" in chunk_prompts[1]
     assert "[MORE SEGMENTS FOLLOW]" in chunk_prompts[0]
     assert "[END OF TRANSCRIPT]" in chunk_prompts[-1]
     assert all(call["options"]["num_ctx"] == 8192 for call in client.calls)
@@ -194,9 +195,7 @@ def test_summarize_stitches_every_extract_into_the_document() -> None:
     )
     # Only the extract, overview, and validation passes ever see the notes: there is
     # no second generation of the detailed body.
-    known_prompts = tuple(
-        get_prompt(name) for name in ("chunk", "merge", "validate", "compact")
-    )
+    known_prompts = tuple(get_prompt(name) for name in ("chunk", "merge", "validate"))
     assert all(
         any(prompt in call["prompt"] for prompt in known_prompts)
         for call in client.calls
@@ -233,18 +232,21 @@ def test_summarize_parses_as_a_meeting_document() -> None:
     )
     client = RecordingClient([extract, extract, FRONT_MATTER, FRONT_MATTER])
     summarizer = make_summarizer(client, num_ctx=8192)
-    document = parse_meeting_markdown(summarizer.summarize(transcript))
+    summary = summarizer.summarize(transcript)
+    document = parse_meeting_markdown(summary)
 
     assert document.title == "Weekly Sync"
     assert document.participants == "Alex, Jordan"
     assert document.has_action_table()
     assert not document.needs_format_pass()
-    detail_titles = [
-        section.title
-        for section in document.sections
-        if section.title.startswith(DETAIL_SECTION_TITLE)
-    ]
-    assert len(detail_titles) == 2
+    assert "UNIQUE_RISK" in summary
+    # Both extracts are identical, so the body carries each item exactly once and
+    # the per-segment participants block never reaches the document.
+    assert summary.count("UNIQUE_RISK") == 1
+    assert summary.count("Alex owns rollout") == 1
+    titles = [section.title for section in document.sections]
+    assert titles.count("Additional Risks and Blockers") == 1
+    assert not any(title.startswith("Participants") for title in titles)
 
 
 def test_validate_runs_once_and_never_shortens() -> None:
@@ -317,16 +319,92 @@ def test_extract_without_document_sections_is_not_continued() -> None:
     assert client.calls == []
 
 
-def test_normalize_extract_body_demotes_headings() -> None:
+SAMPLE_EXTRACTS = [
+    (
+        "**Meeting Notes**\n\n"
+        "**Participants**\n- Cash\n- GranSeba\n\n"
+        "**Discussion**\n\n"
+        "**Project Status and Technical Details**\n"
+        "- Cash: the packaged build fails on the shader compile step.\n"
+        "- GranSeba: the editor build still works, so it is packaging only.\n\n"
+        "**Decisions**\n- No explicit decisions were recorded.\n\n"
+        "**Questions**\n- None raised in this segment.\n\n"
+        "[MORE SEGMENTS FOLLOW]"
+    ),
+    (
+        "**Continuation Brief**\n\n"
+        "**Participants**\n- Cash\n- GranSeba\n\n"
+        "**Discussion**\n\n"
+        "**Project Status and Technical Details (Recap)**\n"
+        "- Cash: the packaged build fails on the shader compile step.\n"
+        "- GranSeba: the editor build still works, so it is packaging only.\n"
+        "- Cash: UNIQUE_DDC the derived data cache was stale and needed clearing.\n\n"
+        "**Technical details**\n- Unreal Engine 5.4, MSVC 14.38.\n\n"
+        "[MORE SEGMENTS FOLLOW]"
+    ),
+    (
+        "**Recap of Previous Discussion**\n"
+        "- The packaged build was failing on shader compilation.\n"
+        "- The editor build kept working throughout.\n\n"
+        "## Presentation Strategy\n"
+        "- GranSeba: UNIQUE_DEMO record the demo before the Friday review.\n\n"
+        "## Action items\n"
+        "- Cash: clear the derived data cache before the next package.\n\n"
+        "[END OF TRANSCRIPT]"
+    ),
+]
+
+
+def test_assembled_body_has_no_per_segment_seams() -> None:
+    """Nine near-identical scaffolds collapse into one section per topic."""
     summarizer = make_summarizer(RecordingClient(), num_ctx=8192)
-    body = summarizer._normalize_extract_body(
-        "# Segment\n\n## Action items\n- do it\n\n**Open Questions**\n- why"
+    document = summarizer._assemble_document(FRONT_MATTER, SAMPLE_EXTRACTS)
+
+    assert "Part 1 of" not in document
+    assert "MORE SEGMENTS FOLLOW" not in document
+    assert "END OF TRANSCRIPT" not in document
+    assert "Meeting Notes" not in document
+    assert "Continuation Brief" not in document
+    assert "GranSeba" in document
+    assert "## Participants" not in document
+    assert "No explicit decisions were recorded" not in document
+    assert "None raised in this segment" not in document
+
+    assert document.count("## Project Status and Technical Details") == 1
+    assert document.count("the packaged build fails on the shader compile step") == 1
+    assert document.count("the editor build still works") == 1
+    assert "The packaged build was failing on shader compilation" not in document
+
+    for unique in ("UNIQUE_DDC", "UNIQUE_DEMO"):
+        assert document.count(unique) == 1
+    assert "Unreal Engine 5.4, MSVC 14.38" in document
+    assert document.startswith("# Weekly Sync")
+
+
+def test_assembled_body_parses_as_a_meeting_document() -> None:
+    from speaker_transcriber.export.meeting_document import parse_meeting_markdown
+
+    summarizer = make_summarizer(RecordingClient(), num_ctx=8192)
+    document = parse_meeting_markdown(
+        summarizer._assemble_document(FRONT_MATTER, SAMPLE_EXTRACTS)
     )
-    assert "# Segment" not in body.replace("### Segment", "")
-    assert "### Segment" in body
-    assert "### Action items" in body
-    assert "### Open Questions" in body
-    assert "- do it" in body
+    titles = [section.title for section in document.sections]
+
+    assert not document.needs_format_pass()
+    assert titles.count("Project Status and Technical Details") == 1
+    assert titles.count("Presentation Strategy") == 1
+    assert titles.count("Technical Details") == 1
+    assert len(titles) == len(set(titles))
+
+
+def test_running_outline_carries_topics_not_label_blocks() -> None:
+    """The next segment sees the topic list, never the Decisions block to copy."""
+    summarizer = make_summarizer(RecordingClient(), num_ctx=8192)
+    outline = summarizer._running_outline(SAMPLE_EXTRACTS[:2])
+
+    assert "Topics already recorded: Project Status and Technical Details" in outline
+    assert "Participants" not in outline
+    assert len(outline) <= summarizer._running_char_budget()
 
 
 def test_format_meeting_notes_uses_format_prompt() -> None:
