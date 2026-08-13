@@ -1,16 +1,19 @@
 from __future__ import annotations
 
 import logging
+import subprocess
+import sys
 import time
 from pathlib import Path
 from queue import Empty, Queue
 
-from PySide6.QtCore import QRectF, QTimer, Qt
+from PySide6.QtCore import QRectF, QTimer, QUrl, Qt
 from PySide6.QtGui import (
     QAction,
     QBrush,
     QCloseEvent,
     QColor,
+    QDesktopServices,
     QDragEnterEvent,
     QDropEvent,
     QFont,
@@ -82,6 +85,10 @@ from speaker_transcriber.export.common import (
 from speaker_transcriber.export.meeting_document import is_usable_summary_markdown
 from speaker_transcriber.export.text_exporter import render_summary_source
 from speaker_transcriber.export.pdf_exporter import reportlab_available
+from speaker_transcriber.export.pdf_options import (
+    effective_pdf_options,
+    pdf_option_deviations,
+)
 from speaker_transcriber.export.weasyprint_exporter import weasyprint_available
 from speaker_transcriber.gpu_stats import query_gpu_stats
 from speaker_transcriber.host_stats import query_host_stats
@@ -99,6 +106,7 @@ from speaker_transcriber.pipeline.types import ProcessingOptions, ProgressUpdate
 from speaker_transcriber.prompts import (
     DEFAULT_STYLE as DEFAULT_SUMMARY_STYLE,
     SUMMARY_STYLES,
+    normalize_excluded_sections,
     normalize_style,
     style_display_name,
 )
@@ -126,7 +134,9 @@ from speaker_transcriber.ui.oom_recovery_dialog import (
     SMALLER_MODEL as OOM_SMALLER_MODEL,
     ask_gpu_recovery,
 )
+from speaker_transcriber.ui.pdf_options_dialog import PdfOptionsDialog
 from speaker_transcriber.ui.settings_dialog import SettingsDialog
+from speaker_transcriber.ui.summary_sections_dialog import SummarySectionsDialog
 from speaker_transcriber.ui.text_search import SearchableTextPanel
 from speaker_transcriber.ui.transcript_panel import TranscriptPanel
 from speaker_transcriber.ui.worker import (
@@ -135,6 +145,16 @@ from speaker_transcriber.ui.worker import (
     ProcessingWorker,
     SummarizationWorker,
 )
+
+
+def reveal_in_file_manager(path: Path) -> None:
+    """Open the system file manager with the file selected."""
+    if sys.platform == "win32":
+        subprocess.Popen(["explorer", f"/select,{path}"])
+    elif sys.platform == "darwin":
+        subprocess.Popen(["open", "-R", str(path)])
+    else:
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(path.parent)))
 
 
 class ElidedLabel(QLabel):
@@ -2312,6 +2332,57 @@ class MainWindow(QMainWindow):
             self.summary_style_combo.currentData() or self.settings.summary_style
         )
 
+    def _excluded_summary_sections(self, style_id: str) -> tuple[str, ...]:
+        """The persisted section exclusions for a style, validated."""
+        stored = self.settings.summary_excluded_sections.get(style_id, [])
+        return normalize_excluded_sections(style_id, stored)
+
+    def _ask_summary_sections(self, style_id: str) -> tuple[str, ...] | None:
+        """Show the section picker; persist and return the excluded ids.
+
+        Returns None when the user cancelled. Styles with no optional
+        sections skip the dialog entirely.
+        """
+        current = self._excluded_summary_sections(style_id)
+        excluded = SummarySectionsDialog.ask(style_id, current, self)
+        if excluded is None:
+            return None
+        if excluded != current:
+            updated = dict(self.settings.summary_excluded_sections)
+            if excluded:
+                updated[style_id] = list(excluded)
+            else:
+                updated.pop(style_id, None)
+            self.settings.summary_excluded_sections = updated
+            try:
+                self.settings_store.save(self.settings)
+            except Exception as exc:
+                self.log_output.appendPlainText(
+                    f"Failed to save summary section choices: {exc}"
+                )
+        return excluded
+
+    def _ask_pdf_options(self, style_id: str) -> dict[str, bool] | None:
+        """Show the PDF export options dialog; persist and return the choices.
+
+        Returns None when the user cancelled. Styles with no applicable
+        options skip the dialog entirely.
+        """
+        current = effective_pdf_options(self.settings.pdf_options)
+        chosen = PdfOptionsDialog.ask(style_id, current, self)
+        if chosen is None:
+            return None
+        deviations = pdf_option_deviations(chosen)
+        if deviations != self.settings.pdf_options:
+            self.settings.pdf_options = deviations
+            try:
+                self.settings_store.save(self.settings)
+            except Exception as exc:
+                self.log_output.appendPlainText(
+                    f"Failed to save PDF export choices: {exc}"
+                )
+        return chosen
+
     def _on_summary_style_changed(self, _index: int = 0) -> None:
         style = self._current_summary_style()
         self._persist_combo_setting("summary_style", style)
@@ -2442,6 +2513,10 @@ class MainWindow(QMainWindow):
                 "without an existing summary.",
             )
             return
+        style_id = self._current_summary_style()
+        pdf_options = self._ask_pdf_options(style_id)
+        if pdf_options is None:
+            return
         source = self._export_source_path()
         initial_dir = self.settings.output_directory or str(
             (source.parent / "output") if source else Path.cwd()
@@ -2479,8 +2554,10 @@ class MainWindow(QMainWindow):
             self._current_ollama_num_ctx(),
             str(self.pdf_engine_combo.currentData() or self.settings.pdf_engine),
             str(self.pdf_theme_combo.currentData() or self.settings.pdf_theme),
-            self._current_summary_style(),
+            style_id,
             self,
+            excluded_sections=self._excluded_summary_sections(style_id),
+            pdf_options=pdf_options,
         )
         self.pdf_export_worker.progress.connect(self._on_summary_progress)
         self.pdf_export_worker.chunk.connect(self._on_pdf_chunk)
@@ -2514,7 +2591,26 @@ class MainWindow(QMainWindow):
         self.progress_bar.setValue(1000)
         self._set_stage_status("PDF export complete")
         self._set_busy(False)
-        QMessageBox.information(self, "PDF export complete", destination)
+        style = self.style()
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Information)
+        box.setWindowTitle("PDF export complete")
+        box.setText(destination)
+        open_button = box.addButton("Open", QMessageBox.ButtonRole.ActionRole)
+        open_button.setIcon(style.standardIcon(QStyle.StandardPixmap.SP_FileIcon))
+        reveal_button = box.addButton(
+            "Reveal in Explorer", QMessageBox.ButtonRole.ActionRole
+        )
+        reveal_button.setIcon(style.standardIcon(QStyle.StandardPixmap.SP_DirOpenIcon))
+        ok_button = box.addButton(QMessageBox.StandardButton.Ok)
+        box.setDefaultButton(ok_button)
+        box.setEscapeButton(ok_button)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is open_button:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(destination))
+        elif clicked is reveal_button:
+            reveal_in_file_manager(Path(destination))
 
     def _pdf_export_failed(self, message: str) -> None:
         self._pdf_streaming_summary = False
@@ -2546,6 +2642,10 @@ class MainWindow(QMainWindow):
                 "Select an available Ollama model before summarizing.",
             )
             return
+        style_id = self._current_summary_style()
+        excluded_sections = self._ask_summary_sections(style_id)
+        if excluded_sections is None:
+            return
         self._persist_ollama_model_selection()
         self._apply_speaker_names(save_only=True)
         self.summary_view.setPlainText("Generating summary…\n")
@@ -2560,8 +2660,9 @@ class MainWindow(QMainWindow):
             render_summary_source(self.result),
             str(model_name),
             self._current_ollama_num_ctx(),
-            self._current_summary_style(),
+            style_id,
             self,
+            excluded_sections=excluded_sections,
         )
         self.summary_worker.progress.connect(self._on_summary_progress)
         self.summary_worker.chunk.connect(self._on_summary_chunk)

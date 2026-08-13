@@ -29,6 +29,7 @@ from speaker_transcriber.export.pdf_layout import (
     default_layout,
     layout_for,
 )
+from speaker_transcriber.export.pdf_options import apply_pdf_options
 from speaker_transcriber.export.pdf_theme import (
     PdfPalette,
     anchor_map,
@@ -570,6 +571,7 @@ def _try_weasyprint_export(
     path: Path,
     theme: str,
     style: str | None,
+    options: dict[str, bool] | None = None,
 ) -> bool:
     try:
         from speaker_transcriber.export.weasyprint_exporter import (
@@ -579,7 +581,7 @@ def _try_weasyprint_export(
 
         if not weasyprint_available():
             return False
-        export_weasyprint_pdf(document, path, theme=theme, style=style)
+        export_weasyprint_pdf(document, path, theme=theme, style=style, options=options)
         return True
     except Exception as exc:
         LOGGER.warning("WeasyPrint export failed for %s: %s", path, exc)
@@ -592,33 +594,34 @@ def export_meeting_pdf(
     engine: str = "reportlab",
     theme: str = "light",
     style: str | None = None,
+    options: dict[str, bool] | None = None,
 ) -> None:
     chosen = str(engine or "reportlab").strip().lower()
     theme = normalize_theme(theme)
     if chosen == "weasyprint":
-        if _try_weasyprint_export(document, path, theme, style):
+        if _try_weasyprint_export(document, path, theme, style, options):
             return
         if reportlab_available():
             LOGGER.warning(
                 "WeasyPrint is not available; falling back to ReportLab for %s",
                 path,
             )
-            _export_reportlab_pdf(document, path, theme, style)
+            _export_reportlab_pdf(document, path, theme, style, options)
             return
         raise RuntimeError(
             "WeasyPrint is not available. Install it and its native libraries "
             "(Pango/Cairo/GTK), or install ReportLab with `pip install reportlab`."
         )
     if reportlab_available():
-        _export_reportlab_pdf(document, path, theme, style)
+        _export_reportlab_pdf(document, path, theme, style, options)
         return
-    if _try_weasyprint_export(document, path, theme, style):
+    if _try_weasyprint_export(document, path, theme, style, options):
         LOGGER.warning(
             "ReportLab is not available; falling back to WeasyPrint for %s",
             path,
         )
         return
-    _export_reportlab_pdf(document, path, theme, style)
+    _export_reportlab_pdf(document, path, theme, style, options)
 
 
 def _page_size(layout: PdfLayout) -> tuple[float, float]:
@@ -632,9 +635,10 @@ def _export_reportlab_pdf(
     path: Path,
     theme: str = "light",
     style: str | None = None,
+    options: dict[str, bool] | None = None,
 ) -> None:
     _ensure_reportlab()
-    layout = layout_for(style)
+    layout = apply_pdf_options(layout_for(style), options)
     palette = palette_for(theme, style)
     if layout.speaker_turns:
         document = as_script(document)

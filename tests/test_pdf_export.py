@@ -189,7 +189,7 @@ def test_export_meeting_pdf_writes_pdf_header(tmp_path) -> None:
 def test_export_meeting_pdf_dispatches_weasyprint(monkeypatch, tmp_path) -> None:
     called: dict[str, object] = {}
 
-    def fake_export(document, path, theme="light", style=None) -> None:
+    def fake_export(document, path, theme="light", style=None, options=None) -> None:
         called["document"] = document
         called["path"] = path
         called["theme"] = theme
@@ -579,7 +579,9 @@ def make_pdf_worker(tmp_path, markdown: str, style: str):
 def test_non_meeting_styles_skip_the_format_pass(monkeypatch, tmp_path) -> None:
     exported: dict[str, object] = {}
 
-    def fake_export(document, path, engine="reportlab", theme="light", style=None):
+    def fake_export(
+        document, path, engine="reportlab", theme="light", style=None, options=None
+    ):
         exported["style"] = style
         exported["document"] = document
 

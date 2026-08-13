@@ -12,8 +12,8 @@ content. When the source repeats the same point, keep it once. Use this exact st
 7. `## Action Items` — a Markdown pipe table with columns Owner | Action | Priority
 8. `## Open Questions` — bullet list
 9. `## Risks, Dependencies, and Blockers` — each risk as a short paragraph followed by a `Mitigation:` line when mitigation was discussed
-10. `## Closing Assessment`
-11. Detailed `##` and `###` discussion sections for the remaining notes, keeping their order and all of their detail
+10. Detailed `##` and `###` discussion sections for the remaining notes, keeping their order and all of their detail
+11. `## Closing Assessment` — the document's final section
 
 Output Markdown only, starting directly with the `#` title: no preamble and no code fence.
 Use `##` for major sections. Make the action-item table a real pipe table, even if the source

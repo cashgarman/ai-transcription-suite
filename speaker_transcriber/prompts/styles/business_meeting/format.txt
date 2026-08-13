@@ -18,9 +18,9 @@ Use this exact structure:
 12. `## Open Questions` — bullet list
 13. `## Risks, Dependencies, and Blockers` — each risk as a short paragraph followed by a
     `Mitigation:` line when mitigation was discussed
-14. `## Closing Assessment`
-15. Detailed `##` and `###` discussion sections for the remaining notes, keeping their order and
+14. Detailed `##` and `###` discussion sections for the remaining notes, keeping their order and
     all of their detail
+15. `## Closing Assessment` — the document's final section
 
 Output Markdown only, starting directly with the `#` title: no preamble and no code fence.
 Make the action-item table a real pipe table, even if the source used tabs, bullets, or prose.

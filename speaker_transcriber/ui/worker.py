@@ -244,6 +244,8 @@ class SummarizationWorker(QThread, NotesMemoryRecoveryMixin):
     cancelled = Signal()
     oom_detected = Signal(object)
 
+    excluded_sections: tuple[str, ...] = ()
+
     def __init__(
         self,
         text: str,
@@ -251,12 +253,15 @@ class SummarizationWorker(QThread, NotesMemoryRecoveryMixin):
         num_ctx: int,
         style: str = DEFAULT_STYLE,
         parent=None,
+        *,
+        excluded_sections: tuple[str, ...] = (),
     ) -> None:
         super().__init__(parent)
         self.text = text
         self.model_name = model_name
         self.num_ctx = int(num_ctx)
         self.style = normalize_style(style)
+        self.excluded_sections = tuple(excluded_sections)
         self.cancel_event = threading.Event()
         self._init_recovery()
 
@@ -288,6 +293,7 @@ class SummarizationWorker(QThread, NotesMemoryRecoveryMixin):
                     self.model_name,
                     num_ctx=self.num_ctx,
                     style=self.style,
+                    excluded_sections=self.excluded_sections,
                     cancel_event=self.cancel_event,
                 )
                 summary = summarizer.summarize(
@@ -327,6 +333,9 @@ class PdfExportWorker(QThread, NotesMemoryRecoveryMixin):
     SUMMARIZE_END = 0.70
     FORMAT_END = 0.85
 
+    excluded_sections: tuple[str, ...] = ()
+    pdf_options: dict[str, bool] | None = None
+
     def __init__(
         self,
         destination: str,
@@ -338,6 +347,9 @@ class PdfExportWorker(QThread, NotesMemoryRecoveryMixin):
         pdf_theme: str = "light",
         style: str = DEFAULT_STYLE,
         parent=None,
+        *,
+        excluded_sections: tuple[str, ...] = (),
+        pdf_options: dict[str, bool] | None = None,
     ) -> None:
         super().__init__(parent)
         self.destination = destination
@@ -348,6 +360,8 @@ class PdfExportWorker(QThread, NotesMemoryRecoveryMixin):
         self.pdf_engine = pdf_engine
         self.pdf_theme = pdf_theme
         self.style = normalize_style(style)
+        self.excluded_sections = tuple(excluded_sections)
+        self.pdf_options = dict(pdf_options) if pdf_options else None
         self._init_recovery()
 
     def run(self) -> None:
@@ -376,6 +390,7 @@ class PdfExportWorker(QThread, NotesMemoryRecoveryMixin):
             parse_meeting_markdown,
         )
         from speaker_transcriber.export.pdf_exporter import export_meeting_pdf
+        from speaker_transcriber.models.section_filter import move_sections_to_end
         from speaker_transcriber.models.summarization import (
             RequirementsSummarizer,
             SummarizationProgress,
@@ -405,6 +420,7 @@ class PdfExportWorker(QThread, NotesMemoryRecoveryMixin):
                 self.model_name,
                 num_ctx=self.num_ctx,
                 style=self.style,
+                excluded_sections=self.excluded_sections,
             )
 
             def on_summarize_progress(fraction: float, message: str) -> None:
@@ -427,8 +443,14 @@ class PdfExportWorker(QThread, NotesMemoryRecoveryMixin):
         else:
             emit_progress(0.05, "Parsing meeting notes…")
 
+        style = get_style(self.style)
+        # Summaries written before a trailing-section change keep working: the
+        # relocation is deterministic and a no-op on already-ordered documents.
+        markdown = move_sections_to_end(markdown, style.trailing_sections)
         document = parse_meeting_markdown(markdown)
-        if get_style(self.style).is_meeting_family and document.needs_format_pass():
+        if style.is_meeting_family and document.needs_format_pass(
+            require_action_table=style.requires_action_table(self.excluded_sections)
+        ):
             if not self.model_name:
                 raise RuntimeError(
                     "The meeting notes need formatting. Select an Ollama model "
@@ -443,6 +465,7 @@ class PdfExportWorker(QThread, NotesMemoryRecoveryMixin):
                     self.model_name,
                     num_ctx=self.num_ctx,
                     style=self.style,
+                    excluded_sections=self.excluded_sections,
                 )
             emit_progress(self.SUMMARIZE_END, "Formatting meeting notes…")
 
@@ -464,6 +487,7 @@ class PdfExportWorker(QThread, NotesMemoryRecoveryMixin):
             engine=self.pdf_engine,
             theme=self.pdf_theme,
             style=self.style,
+            options=self.pdf_options,
         )
         emit_progress(1.0, "PDF export complete")
         self.completed.emit(self.destination)

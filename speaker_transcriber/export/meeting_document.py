@@ -125,11 +125,11 @@ class MeetingDocument:
                     return True
         return False
 
-    def needs_format_pass(self) -> bool:
+    def needs_format_pass(self, require_action_table: bool = True) -> bool:
         return not (
             bool(self.title.strip())
             and bool(self.named_sections())
-            and self.has_action_table()
+            and (self.has_action_table() or not require_action_table)
         )
 
 

@@ -7,7 +7,11 @@ from pathlib import Path
 
 from speaker_transcriber.huggingface_setup import load_project_env
 from speaker_transcriber.prompts import DEFAULT_STYLE as DEFAULT_SUMMARY_STYLE
-from speaker_transcriber.prompts import normalize_style
+from speaker_transcriber.prompts import (
+    is_known_style,
+    normalize_excluded_sections,
+    normalize_style,
+)
 
 
 RECOMMENDED_WHISPER_MODELS = ("large-v3", "distil-large-v3", "medium")
@@ -28,6 +32,30 @@ def _string_list(value: object) -> list[str]:
     if not isinstance(value, list):
         return []
     return [str(item).strip() for item in value if str(item).strip()]
+
+
+def _clean_excluded_sections(value: object) -> dict[str, list[str]]:
+    """Keep only known styles and, per style, only its registered section ids."""
+    if not isinstance(value, dict):
+        return {}
+    cleaned: dict[str, list[str]] = {}
+    for style_key, ids in value.items():
+        style_id = str(style_key)
+        if not is_known_style(style_id) or not isinstance(ids, (list, tuple)):
+            continue
+        known = normalize_excluded_sections(style_id, [str(item) for item in ids])
+        if known:
+            cleaned[style_id] = list(known)
+    return cleaned
+
+
+def _clean_pdf_options(value: object) -> dict[str, bool]:
+    """Keep only registered PDF options whose value differs from the default."""
+    from speaker_transcriber.export.pdf_options import pdf_option_deviations
+
+    if not isinstance(value, dict):
+        return {}
+    return pdf_option_deviations(value)
 
 
 def snap_ollama_num_ctx(value: int) -> int:
@@ -92,6 +120,8 @@ class AppSettings:
     extra_diarization_models: list[str] = field(default_factory=list)
     pdf_engine: str = "reportlab"
     pdf_theme: str = "light"
+    pdf_options: dict[str, bool] = field(default_factory=dict)
+    """PDF export toggles that differ from their defaults, by option id."""
     window_width: int = 1200
     window_height: int = 820
     use_cached_transcript: bool = True
@@ -99,6 +129,8 @@ class AppSettings:
     ollama_num_ctx: int = DEFAULT_OLLAMA_NUM_CTX
     ollama_oom_policy: str = ""
     summary_style: str = DEFAULT_SUMMARY_STYLE
+    summary_excluded_sections: dict[str, list[str]] = field(default_factory=dict)
+    """Per style, the section ids the user turned off for that style."""
     recent_files: list[str] = field(default_factory=list)
 
     def validate(self) -> None:
@@ -141,7 +173,11 @@ class AppSettings:
         self.pdf_engine = engine if engine in PDF_ENGINES else "reportlab"
         pdf_theme = str(self.pdf_theme or "light").strip().lower()
         self.pdf_theme = pdf_theme if pdf_theme in PDF_THEMES else "light"
+        self.pdf_options = _clean_pdf_options(self.pdf_options)
         self.summary_style = normalize_style(self.summary_style)
+        self.summary_excluded_sections = _clean_excluded_sections(
+            self.summary_excluded_sections
+        )
         self.alignment_model = str(self.alignment_model or DEFAULT_ALIGNMENT_MODEL).strip() or DEFAULT_ALIGNMENT_MODEL
         self.diarization_model = (
             str(self.diarization_model or DEFAULT_DIARIZATION_MODEL).strip()

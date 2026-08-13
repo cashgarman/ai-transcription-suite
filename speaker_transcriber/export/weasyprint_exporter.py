@@ -29,6 +29,7 @@ from speaker_transcriber.export.pdf_layout import (
     PdfLayout,
     layout_for,
 )
+from speaker_transcriber.export.pdf_options import apply_pdf_options
 from speaker_transcriber.export.pdf_theme import (
     PdfPalette,
     anchor_map,
@@ -307,9 +308,10 @@ def meeting_document_html(
     document: MeetingDocument,
     theme: str = "light",
     style: str | None = None,
+    options: dict[str, bool] | None = None,
 ) -> str:
     theme = normalize_theme(theme)
-    layout = layout_for(style)
+    layout = apply_pdf_options(layout_for(style), options)
     palette = palette_for(theme, style)
     if layout.speaker_turns:
         document = as_script(document)
@@ -525,6 +527,7 @@ def export_weasyprint_pdf(
     path: Path,
     theme: str = "light",
     style: str | None = None,
+    options: dict[str, bool] | None = None,
 ) -> None:
     if not weasyprint_available():
         raise RuntimeError(
@@ -535,6 +538,10 @@ def export_weasyprint_pdf(
 
     destination = Path(path)
     destination.parent.mkdir(parents=True, exist_ok=True)
-    HTML(string=meeting_document_html(document, theme=theme, style=style)).write_pdf(
-        str(destination)
+    html_text = meeting_document_html(
+        document,
+        theme=theme,
+        style=style,
+        options=options,
     )
+    HTML(string=html_text).write_pdf(str(destination))

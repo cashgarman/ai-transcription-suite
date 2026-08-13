@@ -13,9 +13,9 @@ content. When the source repeats the same point, keep it once. Use this exact st
 8. `## Open Questions` — bullet list
 9. `## Snags and Worries` — short paragraphs, each followed by a `Mitigation:` line when one was
    discussed
-10. `## Closing Assessment`
-11. Detailed `##` and `###` discussion sections for the remaining notes, keeping their order and
+10. Detailed `##` and `###` discussion sections for the remaining notes, keeping their order and
     all of their detail
+11. `## Closing Assessment` — the document's final section
 
 Write in a warm, plain voice rather than corporate fragments, but keep every specific.
 

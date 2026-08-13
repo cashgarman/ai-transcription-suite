@@ -14,13 +14,20 @@ from speaker_transcriber.models.notes_assembly import (
     recent_lines,
     topic_titles,
 )
+from speaker_transcriber.models.section_filter import (
+    move_sections_to_end,
+    strip_excluded_sections,
+)
 from speaker_transcriber.prompts import (
     DEFAULT_STYLE,
     MEETING_PIPELINE,
+    SEGMENT_NOTES_SECTION_ID,
     SEQUENTIAL_PIPELINE,
     SummaryStyle,
+    excluded_section_headings,
     get_prompt,
     get_style,
+    normalize_excluded_sections,
 )
 
 
@@ -137,7 +144,9 @@ class RequirementsSummarizer:
     MODEL_NAME = "qwen3.5:9b"
     CHUNK_STAGE_END = 0.55
     MERGE_STAGE_END = 0.80
+    SECTION_AWARE_STAGES = frozenset({"merge", "validate", "format"})
     style: SummaryStyle = get_style(DEFAULT_STYLE)
+    excluded_sections: tuple[str, ...] = ()
 
     def __init__(
         self,
@@ -145,6 +154,7 @@ class RequirementsSummarizer:
         *,
         num_ctx: int,
         style: str = DEFAULT_STYLE,
+        excluded_sections: tuple[str, ...] = (),
         cancel_event: threading.Event | None = None,
     ) -> None:
         """num_ctx is required: it is the Notes context length the user selected."""
@@ -155,6 +165,7 @@ class RequirementsSummarizer:
         self.model_name = model_name
         self.num_ctx = int(num_ctx)
         self.style: SummaryStyle = get_style(style)
+        self.excluded_sections = normalize_excluded_sections(style, excluded_sections)
         self.cancel_event = cancel_event
         self.client = ollama.Client()
 
@@ -162,8 +173,50 @@ class RequirementsSummarizer:
     def style_id(self) -> str:
         return self.style.style_id
 
+    def _excluded_headings(self) -> tuple[str, ...]:
+        return excluded_section_headings(self.style_id, self.excluded_sections)
+
+    def _segment_notes_excluded(self) -> bool:
+        return SEGMENT_NOTES_SECTION_ID in self.excluded_sections
+
+    def _exclusion_directive(self) -> str:
+        """An override block appended to the document-shaping stage prompts."""
+        headings = self._excluded_headings()
+        skip_notes = self._segment_notes_excluded()
+        if not headings and not skip_notes:
+            return ""
+        sentences: list[str] = []
+        if headings:
+            listed = ", ".join(f"`## {heading}`" for heading in headings)
+            sentences.append(
+                f"Leave these sections out of the document entirely: {listed}. "
+                "This overrides any instruction above that asks for them: do "
+                "not write the heading or its content, do not add a "
+                "replacement section, and do not mention the omission."
+            )
+        if skip_notes:
+            sentences.append(
+                "The detailed per-topic discussion notes are also turned off: "
+                "do not write per-topic discussion sections after the "
+                "overview."
+            )
+        sentences.append("Produce every other section exactly as instructed.")
+        return "## Sections turned off by the user\n\n" + " ".join(sentences)
+
     def _prompt(self, name: str) -> str:
-        return get_prompt(name, self.style_id)
+        text = get_prompt(name, self.style_id)
+        if name in self.SECTION_AWARE_STAGES:
+            directive = self._exclusion_directive()
+            if directive:
+                return f"{text}\n\n{directive}"
+        return text
+
+    def _strip_excluded(self, markdown: str) -> str:
+        """Guarantee excluded sections are gone, whatever the model produced."""
+        headings = self._excluded_headings()
+        if not headings:
+            return markdown
+        return strip_excluded_sections(markdown, headings)
 
     @property
     def _overview_label(self) -> str:
@@ -422,11 +475,23 @@ class RequirementsSummarizer:
             return True
         if not require_sections:
             return False
-        required = self.style.required_sections
+        required = self._required_sections()
         if not required:
             return False
         lower = stripped.lower()
         return not any(section in lower for section in required)
+
+    def _required_sections(self) -> tuple[str, ...]:
+        """The style's required phrases, minus those the user turned off."""
+        required = self.style.required_sections
+        if not required or not self.excluded_sections:
+            return required
+        excluded = [heading.casefold() for heading in self._excluded_headings()]
+        return tuple(
+            phrase
+            for phrase in required
+            if not any(phrase in heading for heading in excluded)
+        )
 
     def _join_continuation(self, prefix: str, addition: str) -> str:
         left = prefix.rstrip()
@@ -530,11 +595,18 @@ class RequirementsSummarizer:
         """Join the generated overview with one merged body of section notes.
 
         Only the meeting styles keep the segment notes: every other style's
-        merge pass already wrote the whole document.
+        merge pass already wrote the whole document. When the user turned the
+        detailed notes off, the overview is the document. Trailing sections —
+        a meeting's Closing Assessment — are moved behind the appended notes
+        so they end the document.
         """
         if self.style.pipeline != MEETING_PIPELINE:
             return front_matter.strip()
-        return assemble_notes(front_matter, extracts)
+        if self._segment_notes_excluded():
+            document = front_matter.strip()
+        else:
+            document = assemble_notes(front_matter, extracts)
+        return move_sections_to_end(document, self.style.trailing_sections)
 
     def _running_outline(self, extracts: list[str]) -> str:
         """Background for the next segment: topics so far, plus the latest notes.
@@ -675,6 +747,8 @@ class RequirementsSummarizer:
         if not formatted.strip():
             raise RuntimeError("Ollama returned empty formatted meeting notes.")
         formatted = self._ensure_complete(formatted, "format", on_chunk)
+        formatted = self._strip_excluded(formatted)
+        formatted = move_sections_to_end(formatted, self.style.trailing_sections)
         if on_progress is not None:
             on_progress(1.0, "Formatting complete")
         return formatted
@@ -762,8 +836,10 @@ class RequirementsSummarizer:
                 )
 
             if self.style.pipeline == SEQUENTIAL_PIPELINE:
-                summary = "\n\n".join(
-                    extract.strip() for extract in extracts if extract.strip()
+                summary = self._strip_excluded(
+                    "\n\n".join(
+                        extract.strip() for extract in extracts if extract.strip()
+                    )
                 )
                 emit_progress(1.0, "Summary complete")
                 LOGGER.info(
@@ -789,7 +865,9 @@ class RequirementsSummarizer:
                 on_reasoning,
                 self.MERGE_STAGE_END,
             )
-            summary = self._assemble_document(front_matter, extracts)
+            summary = self._strip_excluded(
+                self._assemble_document(front_matter, extracts)
+            )
             emit_progress(1.0, "Summary complete")
             LOGGER.info(
                 "Summarization complete (%d characters from %d extract(s), "
