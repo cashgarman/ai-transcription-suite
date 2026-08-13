@@ -11,15 +11,16 @@ so you can tell what is new. Never restate it, summarize it, or recap it.
   Segment, or Continuation.
 - Under each topic write compact Markdown bullets, one point per bullet, attributed inline to
   the speaker by the name or label the transcript uses. Do not write a participants list.
-  The shape:
+  The shape, where each `<...>` is a placeholder for this segment's own material, never text
+  to copy:
 
-## Onboarding Drop-Off
+## <Design topic under discussion>
 
-- Cash: people abandon the flow at the permissions screen; support tickets back this up.
+- <Speaker>: <their point, with the evidence they cited>.
 
 - After the topics, add these headings only when this segment has material for them:
   `## Problem framing` (what problem, for whom, and why it matters), `## Evidence` (research,
-  data, support tickets, playtests, or anecdotes cited), `## Constraints` (technical, platform,
+  data, feedback, user tests, or anecdotes cited), `## Constraints` (technical, platform,
   time, budget, brand, accessibility), `## Alternatives` (each option floated, with its
   argument for and against and who made it), `## Flows and screens` (specific flows, screens,
   states, components, and copy discussed), `## To prototype` (what the team wants to try or

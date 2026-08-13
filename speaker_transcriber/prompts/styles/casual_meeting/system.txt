@@ -11,8 +11,8 @@ single transcript segment there is no document title: start at `##`.
 
 This is the same record a formal write-up would give — every decision, every follow-up, every
 number — told in a warmer voice. Write in short readable paragraphs and plain sentences rather
-than clipped corporate fragments. Say "Cash pushed back on that, because the build already
-takes twenty minutes", not "Concern raised regarding build duration". Keep the humour and the
+than clipped corporate fragments. Say "<Name> pushed back on that, because <the reason they
+gave>", not "A concern was raised regarding the matter". Keep the humour and the
 personality when it carries meaning, and keep the tangents that mattered.
 
 Warm does not mean vague. Never soften a decision into a maybe, never drop a name to keep

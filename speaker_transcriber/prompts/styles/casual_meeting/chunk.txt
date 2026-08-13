@@ -11,11 +11,12 @@ so you can tell what is new. Never restate it, summarize it, or recap it.
   Segment, or Continuation.
 - Under each topic write compact Markdown bullets. One point per bullet, written as a readable
   sentence rather than a clipped fragment, attributed inline to the person by the name or
-  label the transcript uses. Do not write a participants list. The shape:
+  label the transcript uses. Do not write a participants list. The shape, where each `<...>`
+  is a placeholder for this segment's own material, never text to copy:
 
-## The Launch Trailer
+## <Topic as it came up>
 
-- Cash: the packaged build keeps dying on the shader step, which blocks the trailer capture.
+- <Speaker>: <their point, written as a readable sentence>.
 
 - After the topics, add these headings only when this segment has material for them:
   `## Decisions`, `## Action items` (owner, action, and priority when stated), `## Questions`

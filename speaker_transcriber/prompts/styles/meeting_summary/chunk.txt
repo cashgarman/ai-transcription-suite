@@ -11,12 +11,13 @@ so you can tell what is new. Never restate it, summarize it, or recap it.
   use a generic heading such as Discussion, Notes, Meeting Notes, Summary, Overview, Recap,
   Segment, or Continuation.
 - Under each topic write compact Markdown bullets, not flowing prose. One bullet per point,
-  attributed inline to the speaker by the name or label the transcript uses. The shape:
+  attributed inline to the speaker by the name or label the transcript uses. The shape, where
+  each `<...>` is a placeholder for this segment's own material, never text to copy:
 
-## Packaged Build Failures
+## <Topic as the speakers framed it>
 
-- Cash: the packaged build fails on the shader step; the editor build is fine.
-- Andrew: suspects the June driver update and will test on the older driver today.
+- <Speaker>: <their point, keeping its specifics>.
+- <Other speaker>: <their response, question, or counterpoint>.
 
 - Do not write a participants list; the names belong on the bullets.
 - After the topics, add these headings only when this segment has material for them:

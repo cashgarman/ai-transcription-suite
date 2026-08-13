@@ -11,8 +11,8 @@ what the hosts have already said. Never recap it, restate it, or reintroduce the
   the background ends with the last lines already spoken, so pick up mid-conversation with
   whichever host naturally follows.
 - Work through the substance of the segment in the order it came up. Keep the decisions, the
-  numbers, the names, the disagreements, and the reasons people gave. Attribute them: "Cash
-  argued that…", "Andrew's worry was…".
+  numbers, the names, the disagreements, and the reasons people gave. Attribute them to the
+  people the source names: "<Name> argued that…", "<Name>'s worry was…".
 - Host A asks the question a listener would ask, then Host B answers it from the source. Never
   let a host answer with something the source does not support.
 - Keep it conversational but dense. No filler chatter, no jokes you invented, no speculation

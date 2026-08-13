@@ -11,11 +11,12 @@ Use only these `##` headings, and omit any heading this segment has nothing for:
 - `## Context` — the system, component, or situation under discussion, and its current state.
 - `## Problem` — what is broken, blocked, or being chosen between, stated concretely.
 - `## Options` — one `###` per option that was floated, however briefly. Under each, bullets for
-  how it would work, its cost, its risk, who argued for or against it, and why. For example:
+  how it would work, its cost, its risk, who argued for or against it, and why. The shape,
+  where each `<...>` is a placeholder for this segment's own material, never text to copy:
 
-### Precompile shaders in CI
+### <Option as the speakers named it>
 
-- Cash: moves the failure to build time, where it is visible; adds roughly four minutes per build.
+- <Speaker>: <their argument for or against it, with the cost or risk they cited>.
 
 - `## Decisions` — what was actually settled, and the reason given.
 - `## Consequences` — what the choice commits the team to: migrations, rewrites, dependencies,

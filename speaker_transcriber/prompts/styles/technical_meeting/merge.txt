@@ -5,7 +5,7 @@ and produce one single document. Never copy a `### Section N` heading into your 
 
 Produce exactly this structure:
 
-1. `#` title — the technical subject, for example `Build Pipeline: Shader Compilation Strategy`.
+1. `#` title — the technical subject the notes are about, named in the notes' own vocabulary.
 2. An italic one-line statement of what was decided, or that no decision was reached.
 3. `## Context` — the system and situation, in a short paragraph or two.
 4. `## Problem` — what had to be decided, and the constraints on it.

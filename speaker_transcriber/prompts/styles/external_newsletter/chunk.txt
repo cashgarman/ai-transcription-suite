@@ -20,11 +20,12 @@ Use only these `##` headings, and omit any heading this segment has nothing for:
 
 ## Content
 
-Compact bullets, one point each, written in outward-facing language. The shape:
+Compact bullets, one point each, written in outward-facing language. The shape, where each
+`<...>` is a placeholder for this segment's own material, never text to copy:
 
 ## Shipped or changed
 
-- The first two levels now have their full sound pass, so exploration feels far more alive.
+- <What is now true, told from the reader's point of view>.
 
 Do not attribute points to individual speakers; say what is true, not who said it. Preserve
 numbers and dates exactly. Never soften a "maybe" into a "will".

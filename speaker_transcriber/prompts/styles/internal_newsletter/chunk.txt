@@ -19,11 +19,12 @@ Use only these `##` headings, and omit any heading this segment has nothing for:
 ## Content
 
 Compact bullets, one point each, attributed inline by the name or label the transcript uses.
-The shape:
+The shape, where each `<...>` is a placeholder for this segment's own material, never text
+to copy:
 
 ## What happened
 
-- Andrew: the sound pass is done for the first two levels; the boss fight still needs mixing.
+- <Name>: <what changed or happened, keeping its numbers, dates, and deadlines>.
 
 Keep every name, number, date, and deadline. Keep disagreements as disagreements. Drop pure
 logistics chatter unless it changes what someone must do.

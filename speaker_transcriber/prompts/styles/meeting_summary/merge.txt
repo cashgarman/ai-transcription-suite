@@ -10,9 +10,10 @@ Produce exactly this structure and nothing else:
 
 1. `#` title — the meeting's actual subject, not "Meeting Notes". Never invent a date.
 2. Italic one-line meeting summary
-3. **Participants** — the people named in the section notes (for example `Alex, Jordan,
-   SPEAKER_03`), gathered from the attributions on the bullets, not "Team members from design
-   and engineering". Prefer display names when the notes have them.
+3. **Participants** — the people named in the section notes, listed exactly as the notes name
+   them (keep a raw label like `SPEAKER_03` when that is all there is), gathered from the
+   attributions on the bullets, not "Team members from design and engineering". Prefer display
+   names when the notes have them.
 4. **Primary topics** — comma-separated
 5. `## Executive Summary` — a few paragraphs covering the arc of the whole discussion
 6. `## Key Decisions and Direction` — numbered list, every decision in the notes

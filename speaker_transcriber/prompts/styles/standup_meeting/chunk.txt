@@ -6,13 +6,14 @@ so you can tell what is new. Never restate it.
 ## Structure
 
 - `## Updates` — one `###` per person who gave an update, named as the transcript names them.
-  Under each person, use only these bullets, and only when they said something for them:
+  Under each person, use only these bullets, and only when they said something for them. Each
+  `<...>` is a placeholder for this segment's own material, never text to copy:
 
-### Priya
+### <Person's name>
 
-- Done: merged the retry logic for the upload service (TICKET-482).
-- Doing: migrating the settings screen to the new layout system.
-- Blocked: waiting on Marco for staging database access.
+- Done: <work they finished, keeping ticket, branch, and file names exactly>.
+- Doing: <work they are on now>.
+- Blocked: <what they are waiting on, and who owns it>.
 
 - `## Announcements` — things said to the whole team: schedule changes, releases, process
   changes, reminders.

@@ -11,11 +11,12 @@ so you can tell what is new. Never restate it, summarize it, or recap it.
   Segment, or Continuation.
 - Under each topic write compact Markdown bullets, one point per bullet, attributed inline to
   the speaker by the name or label the transcript uses. Do not write a participants list.
-  The shape:
+  The shape, where each `<...>` is a placeholder for this segment's own material, never text
+  to copy:
 
-## Forest Biome Colour Keys
+## <Piece or topic under review>
 
-- Ronny: the silhouette reads too soft at distance; push the shoulder line harder.
+- <Speaker>: <their critique or direction, keeping the exact adjectives used>.
 
 - After the topics, add these headings only when this segment has material for them:
   `## Visual direction` (mood, palette, lighting, shape language, style targets, and the exact

@@ -11,11 +11,12 @@ so you can tell what is new. Never restate it, summarize it, or recap it.
   Segment, or Continuation.
 - Under each topic write compact Markdown bullets, one point per bullet, attributed inline to
   the speaker by the name or label the transcript uses. Do not write a participants list.
-  The shape:
+  The shape, where each `<...>` is a placeholder for this segment's own material, never text
+  to copy:
 
-## Q3 Pricing Change
+## <Topic as the speakers framed it>
 
-- Brian: the publisher wants a build by the end of the quarter; the contract depends on it.
+- <Speaker>: <their point, keeping every figure, date, and term exactly>.
 
 - After the topics, add these headings only when this segment has material for them:
   `## Goals and targets` (objectives and the measures attached to them), `## Numbers`

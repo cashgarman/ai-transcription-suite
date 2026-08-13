@@ -398,56 +398,56 @@ def test_every_style_has_a_distinct_prompt(name: str) -> None:
 SPOT_CHECKS: dict[str, dict[str, tuple[str, ...]]] = {
     "meeting_summary": {
         "system": ("expert analyst", "speaker labels"),
-        "chunk": ("## Packaged Build Failures", "`## Technical details`"),
+        "chunk": ("## <Topic as the speakers framed it>", "`## Technical details`"),
         "merge": ("## Executive Summary", "## Closing Assessment"),
         "validate": ("front matter",),
         "format": ("## Closing Assessment", "Mitigation:"),
     },
     "art_meeting": {
         "system": ("art director", "adjectives"),
-        "chunk": ("## Forest Biome Colour Keys", "`## Approvals`"),
+        "chunk": ("## <Piece or topic under review>", "`## Approvals`"),
         "merge": ("## Visual Direction", "## References"),
         "validate": ("approved",),
         "format": ("## Feedback and Approvals",),
     },
     "design_meeting": {
         "system": ("product designer", "dropped"),
-        "chunk": ("## Onboarding Drop-Off", "`## Alternatives`"),
+        "chunk": ("## <Design topic under discussion>", "`## Alternatives`"),
         "merge": ("## Alternatives Considered", "## What to Prototype Next"),
         "validate": ("prototype",),
         "format": ("## Problem Framing",),
     },
     "business_meeting": {
         "system": ("unit, period", "never round"),
-        "chunk": ("## Q3 Pricing Change", "actual, forecast, or estimate"),
+        "chunk": ("## <Topic as the speakers framed it>", "actual, forecast, or estimate"),
         "merge": ("## Numbers and Budget", "## Stakeholders"),
         "validate": ("Check the numbers first",),
         "format": ("## Goals and KPIs",),
     },
     "casual_meeting": {
         "system": ("warmer voice", "Warm does not mean vague"),
-        "chunk": ("## The Launch Trailer", "`## Snags`"),
+        "chunk": ("## <Topic as it came up>", "`## Snags`"),
         "merge": ("## What We Decided", "contractions are fine"),
         "validate": ("warm readable voice",),
         "format": ("## Snags and Worries",),
     },
     "technical_meeting": {
         "system": ("decision record", "rejected"),
-        "chunk": ("### Precompile shaders in CI", "`## Consequences`"),
+        "chunk": ("### <Option as the speakers named it>", "`## Consequences`"),
         "merge": ("## Options Considered", "no decision was reached"),
         "validate": ("rejected",),
         "format": ("## Options Considered",),
     },
     "standup_meeting": {
         "system": ("status board", "under a minute"),
-        "chunk": ("### Priya", "- Done:", "- Blocked:"),
+        "chunk": ("### <Person's name>", "- Done:", "- Blocked:"),
         "merge": ("## Team Themes", "exactly once"),
         "validate": ("exactly once",),
         "format": ("- Doing:",),
     },
     "pitch_deck": {
         "system": ("slide language", "not said in the room is a lie"),
-        "chunk": ("## Problem", "three days per asset"),
+        "chunk": ("## Problem", "cost or consequence"),
         "merge": ("logline", "## Ask"),
         "validate": ("Check accuracy first",),
         "format": ("logline",),
@@ -468,7 +468,7 @@ SPOT_CHECKS: dict[str, dict[str, tuple[str, ...]]] = {
     },
     "pure_transcription": {
         "system": ("transcript editor", "**Speaker:**", "disfluency"),
-        "chunk": ("**Cash:**", "mid-sentence"),
+        "chunk": ("**Speaker:** what they said", "mid-sentence"),
         "merge": ("stitching pass",),
         "validate": ("paraphrased",),
         "format": ("**Speaker:**",),
@@ -540,3 +540,57 @@ def test_dialogue_prompts_write_figures_for_the_ear() -> None:
     for name in ("system", "chunk", "format"):
         text = prompt_text(name, "ai_voiced_dialogue")
         assert "$4M" in text, f"ai_voiced_dialogue/{name}.txt lost the TTS figure rule"
+
+
+# Example content that once leaked from the prompts into real summaries: small
+# models copy concrete examples verbatim, so an internal newsletter about a
+# cooking club would report a finished "sound pass". Prompts must show output
+# shape with `<...>` placeholders, never with invented people or facts.
+# Matching is case-sensitive so instruction words like "cash" stay legal.
+INVENTED_EXAMPLE_CONTENT = (
+    "Cash",
+    "Andrew",
+    "Priya",
+    "Marco",
+    "Ronny",
+    "Brian",
+    "sound pass",
+    "boss fight",
+    "shader",
+    "driver update",
+    "TICKET-",
+    "Launch Trailer",
+    "Forest Biome",
+    "Onboarding Drop-Off",
+    "Q3 Pricing",
+    "three days per asset",
+    "upload service",
+    "permissions screen",
+    "playtest",
+)
+
+
+@pytest.mark.parametrize("style_id", STYLE_IDS)
+def test_prompts_carry_no_invented_example_content(style_id: str) -> None:
+    for name in PROMPT_FILENAMES:
+        text = get_prompt(name, style_id)
+        for phrase in INVENTED_EXAMPLE_CONTENT:
+            assert phrase not in text, (
+                f"{style_id}/{name}.txt contains invented example content "
+                f"'{phrase}'; show the output shape with <placeholders> instead"
+            )
+
+
+@pytest.mark.parametrize("style_id", STYLE_IDS)
+def test_shape_examples_declare_their_placeholders(style_id: str) -> None:
+    """An example built from `<...>` placeholders must say they are
+    placeholders, or a small model writes the angle brackets literally."""
+    triggers = ("## <", "### <", "\n- <", "`<...>`")
+    for name in PROMPT_FILENAMES:
+        raw = get_prompt(name, style_id)
+        if not any(trigger in raw for trigger in triggers):
+            continue
+        assert "placeholder" in raw, (
+            f"{style_id}/{name}.txt shows a <...> example without declaring "
+            f"the placeholders"
+        )

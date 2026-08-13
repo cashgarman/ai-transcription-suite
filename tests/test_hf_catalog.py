@@ -1,4 +1,7 @@
-from types import SimpleNamespace
+import sys
+from types import ModuleType, SimpleNamespace
+
+import pytest
 
 from speaker_transcriber.models.hf_catalog import (
     AlignmentCatalogProvider,
@@ -16,6 +19,21 @@ from speaker_transcriber.models.model_catalog import (
     huggingface_cache_dir,
     whisper_runtime_id,
 )
+
+
+@pytest.fixture
+def fake_hub(monkeypatch) -> ModuleType:
+    """A stand-in huggingface_hub module.
+
+    The code under test imports huggingface_hub lazily inside each function,
+    so planting a fake in sys.modules lets these tests exercise the real
+    retry and rejection logic without the heavy dependency being installed.
+    Tests assign only the functions they expect the code to call; anything
+    else fails with an ImportError, which is the point.
+    """
+    module = ModuleType("huggingface_hub")
+    monkeypatch.setitem(sys.modules, "huggingface_hub", module)
+    return module
 
 
 class FakeSibling:
@@ -197,7 +215,7 @@ def test_retry_hub_operation_retries_connection_reset(monkeypatch) -> None:
     assert attempts["count"] == 3
 
 
-def test_snapshot_download_explains_connection_reset(monkeypatch) -> None:
+def test_snapshot_download_explains_connection_reset(monkeypatch, fake_hub) -> None:
     from threading import Event
 
     from speaker_transcriber.models.hf_catalog import _snapshot_download
@@ -211,7 +229,7 @@ def test_snapshot_download_explains_connection_reset(monkeypatch) -> None:
     def boom(**kwargs):
         raise OSError("[WinError 10054] An existing connection was forcibly closed by the remote host")
 
-    monkeypatch.setattr("huggingface_hub.snapshot_download", boom)
+    fake_hub.snapshot_download = boom
     try:
         _snapshot_download("Systran/faster-whisper-tiny", None, None, Event())
     except RuntimeError as exc:
@@ -243,7 +261,7 @@ def test_404_entry_not_found_is_not_retryable() -> None:
     )
 
 
-def test_prefetch_rejects_coreml_without_config_yaml(monkeypatch) -> None:
+def test_prefetch_rejects_coreml_without_config_yaml(monkeypatch, fake_hub) -> None:
     from speaker_transcriber.huggingface_setup import prefetch_diarization_models
 
     monkeypatch.setattr(
@@ -266,9 +284,9 @@ def test_prefetch_rejects_coreml_without_config_yaml(monkeypatch) -> None:
         calls.append("file")
         raise AssertionError("should not download config.yaml")
 
-    monkeypatch.setattr("huggingface_hub.list_repo_files", fake_list_repo_files)
-    monkeypatch.setattr("huggingface_hub.snapshot_download", fake_snapshot)
-    monkeypatch.setattr("huggingface_hub.hf_hub_download", fake_hub_download)
+    fake_hub.list_repo_files = fake_list_repo_files
+    fake_hub.snapshot_download = fake_snapshot
+    fake_hub.hf_hub_download = fake_hub_download
     try:
         prefetch_diarization_models("token", "FluidInference/speaker-diarization-coreml")
     except RuntimeError as exc:
@@ -281,7 +299,7 @@ def test_prefetch_rejects_coreml_without_config_yaml(monkeypatch) -> None:
     assert calls == []
 
 
-def test_prefetch_custom_pipeline_uses_snapshot_only(monkeypatch) -> None:
+def test_prefetch_custom_pipeline_uses_snapshot_only(monkeypatch, fake_hub) -> None:
     from speaker_transcriber.huggingface_setup import prefetch_diarization_models
 
     monkeypatch.setattr(
@@ -303,9 +321,9 @@ def test_prefetch_custom_pipeline_uses_snapshot_only(monkeypatch) -> None:
     def fake_hub_download(repo_id, filename, token=None):
         calls.append(("file", repo_id, filename))
 
-    monkeypatch.setattr("huggingface_hub.list_repo_files", fake_list_repo_files)
-    monkeypatch.setattr("huggingface_hub.snapshot_download", fake_snapshot)
-    monkeypatch.setattr("huggingface_hub.hf_hub_download", fake_hub_download)
+    fake_hub.list_repo_files = fake_list_repo_files
+    fake_hub.snapshot_download = fake_snapshot
+    fake_hub.hf_hub_download = fake_hub_download
     prefetch_diarization_models("token", "acme/speaker-diarization-custom")
     assert calls == [("snapshot", "acme/speaker-diarization-custom")]
 

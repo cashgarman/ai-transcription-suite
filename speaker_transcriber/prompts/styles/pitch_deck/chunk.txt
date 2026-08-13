@@ -21,11 +21,11 @@ Use only these `##` headings, in this order, and omit any heading this segment h
 ## Content
 
 Write compact bullets, one point each. Attribute a point inline when who said it matters. The
-shape:
+shape, where each `<...>` is a placeholder for this segment's own material, never text to copy:
 
 ## Problem
 
-- Cash: the current pipeline takes three days per asset, so the team ships two weeks late.
+- <Speaker>: <the pain, with its cost or consequence exactly as stated>.
 
 Preserve every number, name, date, and product term exactly. Keep competing views: if two
 people disagreed about the market, both bullets stay.
