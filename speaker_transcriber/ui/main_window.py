@@ -67,6 +67,7 @@ from speaker_transcriber.config import (
     DEFAULT_DIARIZATION_MODEL,
     OLLAMA_CTX_CHOICES,
     PDF_ENGINES,
+    PDF_THEMES,
     RECOMMENDED_WHISPER_MODELS,
     SPEAKER_MODES,
     format_ctx_label,
@@ -483,6 +484,27 @@ class MainWindow(QMainWindow):
         self.pdf_engine_combo.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
         )
+        self.pdf_theme_combo = QComboBox()
+        theme_view = QListView()
+        theme_view.setMinimumWidth(220)
+        self.pdf_theme_combo.setView(theme_view)
+        self.pdf_theme_combo.addItem("Light (print friendly)", "light")
+        self.pdf_theme_combo.addItem("Dark (screen reading)", "dark")
+        theme_index = self.pdf_theme_combo.findData(self.settings.pdf_theme)
+        self.pdf_theme_combo.setCurrentIndex(max(theme_index, 0))
+        self.pdf_theme_combo.currentIndexChanged.connect(self._persist_pdf_theme)
+        self.pdf_theme_combo.setToolTip(
+            "Colour scheme for the exported PDF. Light prints well on paper; "
+            "dark matches the application for on-screen reading."
+        )
+        self.pdf_theme_combo.setMinimumWidth(120)
+        self.pdf_theme_combo.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+        )
+        self.pdf_theme_combo.setMinimumContentsLength(8)
+        self.pdf_theme_combo.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        )
         self.refresh_ollama_button = QPushButton("Refresh")
         self.refresh_ollama_button.clicked.connect(self._refresh_ollama_models)
         self._ctx_choices = list(OLLAMA_CTX_CHOICES)
@@ -532,6 +554,10 @@ class MainWindow(QMainWindow):
         )
         models_row.addWidget(
             self._stacked_field("Format PDF notes", self.pdf_engine_combo, "pdf"),
+            1,
+        )
+        models_row.addWidget(
+            self._stacked_field("PDF theme", self.pdf_theme_combo),
             1,
         )
         models_row.addWidget(self._stacked_field("Notes context", ctx_controls), 0)
@@ -1039,6 +1065,12 @@ class MainWindow(QMainWindow):
         if engine not in PDF_ENGINES:
             engine = "reportlab"
         self._persist_combo_setting("pdf_engine", engine)
+
+    def _persist_pdf_theme(self, _index: int = 0) -> None:
+        theme = str(self.pdf_theme_combo.currentData() or "light")
+        if theme not in PDF_THEMES:
+            theme = "light"
+        self._persist_combo_setting("pdf_theme", theme)
 
     def _append_extra(self, attr: str, name: str) -> None:
         current = list(getattr(self.settings, attr))
@@ -1658,6 +1690,7 @@ class MainWindow(QMainWindow):
         self.diarization_combo.setEnabled(not blocked)
         self.ollama_model_combo.setEnabled(not blocked)
         self.pdf_engine_combo.setEnabled(not blocked)
+        self.pdf_theme_combo.setEnabled(not blocked)
         self.ollama_ctx_slider.setEnabled(not blocked)
         if not blocked:
             self.elapsed_timer.stop()
@@ -2333,6 +2366,7 @@ class MainWindow(QMainWindow):
             str(model_name or ""),
             self._current_ollama_num_ctx(),
             str(self.pdf_engine_combo.currentData() or self.settings.pdf_engine),
+            str(self.pdf_theme_combo.currentData() or self.settings.pdf_theme),
             self,
         )
         self.pdf_export_worker.progress.connect(self._on_summary_progress)

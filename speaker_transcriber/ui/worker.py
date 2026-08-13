@@ -319,6 +319,7 @@ class PdfExportWorker(QThread, NotesMemoryRecoveryMixin):
         model_name: str = "",
         num_ctx: int = 0,
         pdf_engine: str = "reportlab",
+        pdf_theme: str = "light",
         parent=None,
     ) -> None:
         super().__init__(parent)
@@ -328,6 +329,7 @@ class PdfExportWorker(QThread, NotesMemoryRecoveryMixin):
         self.model_name = model_name
         self.num_ctx = int(num_ctx)
         self.pdf_engine = pdf_engine
+        self.pdf_theme = pdf_theme
         self._init_recovery()
 
     def run(self) -> None:
@@ -436,6 +438,11 @@ class PdfExportWorker(QThread, NotesMemoryRecoveryMixin):
 
         self.summary_ready.emit(markdown)
         emit_progress(self.FORMAT_END, "Writing PDF…")
-        export_meeting_pdf(document, Path(self.destination), engine=self.pdf_engine)
+        export_meeting_pdf(
+            document,
+            Path(self.destination),
+            engine=self.pdf_engine,
+            theme=self.pdf_theme,
+        )
         emit_progress(1.0, "PDF export complete")
         self.completed.emit(self.destination)

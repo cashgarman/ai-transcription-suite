@@ -14,6 +14,7 @@ SUPPORTED_COMPUTE_TYPES = ("int8_float16", "float16", "int8", "float32")
 SUPPORTED_DEVICES = ("cuda", "cpu")
 SPEAKER_MODES = ("automatic", "exact", "minmax")
 PDF_ENGINES = ("reportlab", "weasyprint")
+PDF_THEMES = ("light", "dark")
 OLLAMA_CTX_CHOICES = (4096, 8192, 16384, 32768, 65536, 131072)
 DEFAULT_OLLAMA_NUM_CTX = 8192
 OLLAMA_OOM_POLICIES = ("", "reduce_ctx", "smaller_model")
@@ -88,6 +89,7 @@ class AppSettings:
     extra_alignment_models: list[str] = field(default_factory=list)
     extra_diarization_models: list[str] = field(default_factory=list)
     pdf_engine: str = "reportlab"
+    pdf_theme: str = "light"
     window_width: int = 1200
     window_height: int = 820
     use_cached_transcript: bool = True
@@ -134,6 +136,8 @@ class AppSettings:
         self.ollama_oom_policy = policy if policy in OLLAMA_OOM_POLICIES else ""
         engine = str(self.pdf_engine or "reportlab").strip().lower()
         self.pdf_engine = engine if engine in PDF_ENGINES else "reportlab"
+        pdf_theme = str(self.pdf_theme or "light").strip().lower()
+        self.pdf_theme = pdf_theme if pdf_theme in PDF_THEMES else "light"
         self.alignment_model = str(self.alignment_model or DEFAULT_ALIGNMENT_MODEL).strip() or DEFAULT_ALIGNMENT_MODEL
         self.diarization_model = (
             str(self.diarization_model or DEFAULT_DIARIZATION_MODEL).strip()

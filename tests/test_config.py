@@ -150,3 +150,15 @@ def test_invalid_pdf_engine_falls_back_to_reportlab() -> None:
     settings = AppSettings(pdf_engine="not-an-engine")
     settings.validate()
     assert settings.pdf_engine == "reportlab"
+
+
+def test_invalid_pdf_theme_falls_back_to_light() -> None:
+    settings = AppSettings(pdf_theme="neon")
+    settings.validate()
+    assert settings.pdf_theme == "light"
+
+
+def test_pdf_theme_round_trip(tmp_path) -> None:
+    store = SettingsStore(tmp_path)
+    store.save(AppSettings(pdf_theme="dark"))
+    assert store.load().pdf_theme == "dark"

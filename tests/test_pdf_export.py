@@ -189,9 +189,10 @@ def test_export_meeting_pdf_writes_pdf_header(tmp_path) -> None:
 def test_export_meeting_pdf_dispatches_weasyprint(monkeypatch, tmp_path) -> None:
     called: dict[str, object] = {}
 
-    def fake_export(document, path) -> None:
+    def fake_export(document, path, theme="light") -> None:
         called["document"] = document
         called["path"] = path
+        called["theme"] = theme
 
     monkeypatch.setattr(
         "speaker_transcriber.export.weasyprint_exporter.weasyprint_available",
@@ -223,7 +224,7 @@ def test_weasyprint_falls_back_to_reportlab_when_unavailable(monkeypatch, tmp_pa
 
 
 def test_weasyprint_runtime_error_falls_back_to_reportlab(monkeypatch, tmp_path) -> None:
-    def boom(document, path) -> None:
+    def boom(document, path, theme="light") -> None:
         raise RuntimeError(
             "WeasyPrint is not available. Install it and its native libraries "
             "(Pango/Cairo/GTK), or switch Format PDF notes to ReportLab."
@@ -295,6 +296,121 @@ def test_configure_weasyprint_libraries_discovers_gobject(tmp_path, monkeypatch)
     found = module.configure_weasyprint_libraries()
     assert str(bin_dir) in found
     assert str(bin_dir) in os.environ["WEASYPRINT_DLL_DIRECTORIES"]
+
+
+def test_toc_entries_cover_named_sections() -> None:
+    from speaker_transcriber.export.pdf_theme import toc_entries
+
+    document = parse_meeting_markdown(COMPLETE_MARKDOWN)
+    entries = toc_entries(document)
+    titles = [entry.title for entry in entries if entry.level == 1]
+    assert "Executive Summary" in titles
+    assert "Action Items" in titles
+    assert "Closing Assessment" in titles
+    anchors = [entry.anchor for entry in entries]
+    assert "sec-executive-summary" in anchors
+    assert len(anchors) == len(set(anchors))
+
+
+def test_weasyprint_html_has_clickable_table_of_contents() -> None:
+    from speaker_transcriber.export.weasyprint_exporter import meeting_document_html
+
+    document = parse_meeting_markdown(COMPLETE_MARKDOWN)
+    html = meeting_document_html(document)
+    assert "class='toc'" in html
+    assert "Contents" in html
+    assert "href='#sec-executive-summary'" in html
+    assert 'id="sec-executive-summary"' in html
+
+
+def test_weasyprint_html_skips_toc_for_single_section() -> None:
+    from speaker_transcriber.export.weasyprint_exporter import meeting_document_html
+
+    markdown = "# Short Note\n\n## Executive Summary\n\nOne section only."
+    document = parse_meeting_markdown(markdown)
+    html = meeting_document_html(document)
+    assert "class='toc'" not in html
+
+
+def test_weasyprint_html_sections_are_divided() -> None:
+    from speaker_transcriber.export.weasyprint_exporter import meeting_document_html
+
+    document = parse_meeting_markdown(COMPLETE_MARKDOWN)
+    html = meeting_document_html(document)
+    assert "section divided" in html
+    assert "border-top" in html
+
+
+def test_weasyprint_dark_theme_uses_dark_page() -> None:
+    from speaker_transcriber.export.weasyprint_exporter import meeting_document_html
+
+    document = parse_meeting_markdown(COMPLETE_MARKDOWN)
+    dark = meeting_document_html(document, theme="dark")
+    light = meeting_document_html(document)
+    assert 'class="theme-dark"' in dark
+    assert "#12181C" in dark
+    assert "#F4F7F8" in dark
+    assert 'class="theme-light"' in light
+    assert "#12181C" not in light
+
+
+def test_weasyprint_unknown_theme_falls_back_to_light() -> None:
+    from speaker_transcriber.export.weasyprint_exporter import meeting_document_html
+
+    document = parse_meeting_markdown(COMPLETE_MARKDOWN)
+    html = meeting_document_html(document, theme="neon")
+    assert 'class="theme-light"' in html
+
+
+def test_reportlab_lists_render_without_list_flowable() -> None:
+    import speaker_transcriber.export.pdf_exporter as pdf_exporter
+    from speaker_transcriber.export.pdf_theme import palette_for
+
+    pdf_exporter._ensure_reportlab()
+    palette = palette_for("light")
+    styles = pdf_exporter._styles(palette)
+    flowables = pdf_exporter._list_flowables(
+        ["First item", "Second item"],
+        styles,
+        palette,
+        numbered=False,
+    )
+    texts = [
+        flowable.text for flowable in flowables if hasattr(flowable, "text")
+    ]
+    assert len(texts) == 2
+    assert all("bullet" not in text for text in texts)
+    assert all("\u2022" in text for text in texts)
+    assert not hasattr(pdf_exporter, "ListFlowable")
+
+
+def test_reportlab_numbered_lists_use_digits() -> None:
+    import speaker_transcriber.export.pdf_exporter as pdf_exporter
+    from speaker_transcriber.export.pdf_theme import palette_for
+
+    pdf_exporter._ensure_reportlab()
+    palette = palette_for("light")
+    styles = pdf_exporter._styles(palette)
+    flowables = pdf_exporter._list_flowables(
+        ["First", "Second"],
+        styles,
+        palette,
+        numbered=True,
+    )
+    texts = [
+        flowable.text for flowable in flowables if hasattr(flowable, "text")
+    ]
+    assert "1." in texts[0]
+    assert "2." in texts[1]
+
+
+def test_export_meeting_pdf_dark_theme_writes_pdf(tmp_path) -> None:
+    document = parse_meeting_markdown(COMPLETE_MARKDOWN)
+    path = tmp_path / "meeting_dark.pdf"
+    export_meeting_pdf(document, path, theme="dark")
+    data = path.read_bytes()
+    assert data.startswith(b"%PDF")
+    assert len(data) > 500
 
 
 def test_export_meeting_pdf_weasyprint_writes_pdf(tmp_path) -> None:
