@@ -79,7 +79,7 @@ from speaker_transcriber.export.common import (
     speaker_speaking_seconds,
 )
 from speaker_transcriber.export.meeting_document import is_usable_summary_markdown
-from speaker_transcriber.export.text_exporter import render_text
+from speaker_transcriber.export.text_exporter import render_summary_source
 from speaker_transcriber.export.pdf_exporter import reportlab_available
 from speaker_transcriber.export.weasyprint_exporter import weasyprint_available
 from speaker_transcriber.gpu_stats import query_gpu_stats
@@ -95,6 +95,7 @@ from speaker_transcriber.models.model_catalog import (
 )
 from speaker_transcriber.models.summarization import RequirementsSummarizer
 from speaker_transcriber.pipeline.types import ProcessingOptions, ProgressUpdate, TranscriptResult
+from speaker_transcriber.speaker_names import apply_display_names_to_text
 from speaker_transcriber.ui.progress_tooltips import (
     KEEP_COLUMN_KEYS,
     progress_column,
@@ -449,11 +450,13 @@ class MainWindow(QMainWindow):
         if not weasyprint_available():
             self.pdf_engine_combo.setItemData(
                 weasy_index,
-                "WeasyPrint is not installed. pip install weasyprint "
-                "(and GTK/Pango/Cairo on Windows). You can still select it; "
-                "PDF export will explain if the renderer is missing.",
+                "WeasyPrint is not installed. Export will use ReportLab instead "
+                "when ReportLab is available.",
                 Qt.ItemDataRole.ToolTipRole,
             )
+            if self.settings.pdf_engine == "weasyprint" and reportlab_available():
+                self.settings.pdf_engine = "reportlab"
+                self.settings_store.save(self.settings)
         pdf_index = self.pdf_engine_combo.findData(self.settings.pdf_engine)
         if pdf_index < 0:
             pdf_index = self.pdf_engine_combo.findData("reportlab")
@@ -565,7 +568,7 @@ class MainWindow(QMainWindow):
             "Export a formatted meeting-notes PDF. Uses Ollama if no summary exists."
         )
         self.export_pdf_button.clicked.connect(self._export_pdf)
-        self.summarize_button = QPushButton("Summarize with Ollama")
+        self.summarize_button = QPushButton("Summarize")
         self.summarize_button.setObjectName("primaryButton")
         self.summarize_button.setEnabled(False)
         self.summarize_button.clicked.connect(self._summarize)
@@ -1639,11 +1642,7 @@ class MainWindow(QMainWindow):
         has_result = self.result is not None
         self.export_button.setEnabled(not blocked and has_result)
         self.export_pdf_button.setEnabled(not blocked and has_result)
-        selected_ollama = self.ollama_model_combo.current_value() or ""
-        ollama_ready = bool(selected_ollama) and self._ollama_name_installed(selected_ollama)
-        self.summarize_button.setEnabled(
-            not blocked and has_result and ollama_ready
-        )
+        self._update_summarize_button(blocked)
         self.refresh_ollama_button.setEnabled(not blocked)
         self.whisper_combo.setEnabled(not blocked)
         self.alignment_combo.setEnabled(not blocked)
@@ -1689,6 +1688,7 @@ class MainWindow(QMainWindow):
         self.transcript_panel.set_result(self.result)
         self._populate_speaker_table()
         self.transcript_panel.highlight_speaker(None)
+        self._restore_cached_summary(sources)
         self._refresh_ollama_models()
         self._set_busy(False)
 
@@ -2106,6 +2106,24 @@ class MainWindow(QMainWindow):
             self._persist_speaker_names()
         except OSError as exc:
             self.log_output.appendPlainText(f"Failed to save speaker names: {exc}")
+        self._refresh_summary_speaker_names()
+
+    def _named_summary_markdown(self, markdown: str) -> str:
+        if self.result is None:
+            return markdown
+        return apply_display_names_to_text(markdown, self.result.speakers)
+
+    def _refresh_summary_speaker_names(self) -> None:
+        if self.result is None:
+            return
+        current = self._current_summary_markdown() or self.summary_markdown
+        if not is_usable_summary_markdown(current):
+            return
+        updated = self._named_summary_markdown(current)
+        if updated == current:
+            return
+        self._apply_summary_markdown(updated)
+        self._persist_summary(updated)
 
     def _export(self) -> None:
         if self.result is None:
@@ -2141,6 +2159,81 @@ class MainWindow(QMainWindow):
             self._set_stage_status("Export failed")
             QMessageBox.critical(self, "Export failed", str(exc))
 
+    def _summary_cache_source(self) -> list[Path] | None:
+        sources = self._current_sources()
+        if sources:
+            return sources
+        if self.result is None:
+            return None
+        files = self.result.source_files or (
+            [self.result.source_file] if self.result.source_file else []
+        )
+        paths = [Path(path) for path in files if str(path).strip()]
+        return paths or None
+
+    def _has_stored_summary(self) -> bool:
+        if is_usable_summary_markdown(self.summary_markdown):
+            return True
+        if self._current_summary_markdown():
+            return True
+        source = self._summary_cache_source()
+        return bool(source) and self.transcript_cache.summary_exists(source)
+
+    def _apply_summary_markdown(self, markdown: str) -> None:
+        self.summary_markdown = markdown.strip()
+        if self.summary_markdown:
+            self.summary_view.setMarkdown(self.summary_markdown)
+
+    def _restore_cached_summary(self, sources: list[Path] | None = None) -> None:
+        if is_usable_summary_markdown(self.summary_markdown):
+            self._apply_summary_markdown(
+                self._named_summary_markdown(self.summary_markdown)
+            )
+            self._update_summarize_button()
+            return
+        cache_source = sources or self._summary_cache_source()
+        if not cache_source:
+            return
+        stored = self.transcript_cache.load_summary(cache_source)
+        if not stored or not is_usable_summary_markdown(stored):
+            return
+        if self.result is not None:
+            stored = apply_display_names_to_text(stored, self.result.speakers)
+        self._apply_summary_markdown(stored)
+        self._update_summarize_button()
+
+    def _persist_summary(self, markdown: str | None = None) -> None:
+        source = self._summary_cache_source()
+        if source is None:
+            return
+        text = (
+            markdown if markdown is not None else self._current_summary_markdown()
+        ).strip()
+        if not is_usable_summary_markdown(text):
+            return
+        try:
+            self.transcript_cache.save_summary(source, text)
+        except OSError as exc:
+            self.log_output.appendPlainText(f"Failed to save summary cache: {exc}")
+            return
+        self._update_summarize_button()
+
+    def _update_summarize_button(self, blocked: bool = False) -> None:
+        has_result = self.result is not None
+        selected_ollama = self.ollama_model_combo.current_value() or ""
+        ollama_ready = bool(selected_ollama) and self._ollama_name_installed(
+            selected_ollama
+        )
+        stored = self._has_stored_summary()
+        self.summarize_button.setText("Re-summarize" if stored else "Summarize")
+        self.summarize_button.setEnabled(not blocked and has_result and ollama_ready)
+        if ollama_ready:
+            self.summarize_button.setToolTip(
+                "Replace the stored meeting notes for this recording."
+                if stored
+                else "Write meeting notes from the transcript using the selected Ollama model."
+            )
+
     def _current_summary_markdown(self) -> str:
         markdown = self.summary_view.toMarkdown().strip()
         if is_usable_summary_markdown(markdown):
@@ -2170,7 +2263,8 @@ class MainWindow(QMainWindow):
             return
         if self.summary_worker and self.summary_worker.isRunning():
             return
-        existing_markdown = self._current_summary_markdown()
+        self._apply_speaker_names(save_only=True)
+        existing_markdown = self._named_summary_markdown(self._current_summary_markdown())
         model_name = self.ollama_model_combo.current_model_name()
         if not existing_markdown and not model_name:
             QMessageBox.warning(
@@ -2210,7 +2304,7 @@ class MainWindow(QMainWindow):
         self._set_busy(False, exporting_pdf=True)
         self.pdf_export_worker = PdfExportWorker(
             str(path),
-            render_text(self.result),
+            render_summary_source(self.result),
             existing_markdown,
             str(model_name or ""),
             self._current_ollama_num_ctx(),
@@ -2236,9 +2330,10 @@ class MainWindow(QMainWindow):
         self._on_summary_section_break()
 
     def _on_pdf_summary_ready(self, text: str) -> None:
-        self.summary_markdown = text.strip()
+        self.summary_markdown = self._named_summary_markdown(text.strip())
         if self.summary_markdown:
             self.summary_view.setMarkdown(self.summary_markdown)
+            self._persist_summary(self.summary_markdown)
 
     def _pdf_export_completed(self, destination: str) -> None:
         self._pdf_streaming_summary = False
@@ -2278,6 +2373,7 @@ class MainWindow(QMainWindow):
             )
             return
         self._persist_ollama_model_selection()
+        self._apply_speaker_names(save_only=True)
         self.summary_view.setPlainText("Generating summary…\n")
         self.tabs.ensure_visible(self.summary_view)
         self.progress_bar.setValue(0)
@@ -2286,7 +2382,7 @@ class MainWindow(QMainWindow):
         self._set_stage_status("Starting summarization…", 0.0)
         self._set_busy(False, summarizing=True)
         self.summary_worker = SummarizationWorker(
-            render_text(self.result),
+            render_summary_source(self.result),
             str(model_name),
             self._current_ollama_num_ctx(),
             self,
@@ -2318,8 +2414,9 @@ class MainWindow(QMainWindow):
 
     def _summary_completed(self, text: str) -> None:
         if text.strip():
-            self.summary_markdown = text.strip()
-            self.summary_view.setMarkdown(text)
+            self.summary_markdown = self._named_summary_markdown(text.strip())
+            self.summary_view.setMarkdown(self.summary_markdown)
+            self._persist_summary(self.summary_markdown)
         else:
             self.summary_markdown = ""
             self.summary_view.setPlainText(

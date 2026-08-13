@@ -125,7 +125,10 @@ class TranscriptView(QTextEdit):
             if segment.overlapping_speakers:
                 overlap_format = QTextCharFormat()
                 overlap_format.setForeground(QColor(Theme.TEXT_MUTED))
-                overlap = ", ".join(segment.overlapping_speakers)
+                overlap = ", ".join(
+                    display_speaker(result, speaker)
+                    for speaker in segment.overlapping_speakers
+                )
                 cursor.insertText(f"\nOverlapping: {overlap}", overlap_format)
 
             self._tag_segment_blocks(

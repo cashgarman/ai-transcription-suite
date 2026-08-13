@@ -8,6 +8,10 @@ from pathlib import Path
 
 from speaker_transcriber.audio.sources import MediaSource
 from speaker_transcriber.config import app_data_dir
+from speaker_transcriber.speaker_names import (
+    custom_speaker_names,
+    merge_cached_speaker_names,
+)
 
 
 LOGGER = logging.getLogger("speaker_transcriber.cache")
@@ -37,7 +41,7 @@ class SpeakerNameStore:
         return self._load_legacy(sources)
 
     def save(self, sources: Path | list[Path], names: dict[str, str]) -> None:
-        cleaned = self._normalize_names(names)
+        cleaned = merge_cached_speaker_names(names, self.load(sources))
         path = self.path_for(sources)
         self.directory.mkdir(parents=True, exist_ok=True)
         if not cleaned:
@@ -76,8 +80,9 @@ class SpeakerNameStore:
             return {}
         return {
             str(label): str(name).strip()
-            for label, name in names.items()
-            if str(name).strip()
+            for label, name in custom_speaker_names(
+                {str(key): str(value) for key, value in names.items()}
+            ).items()
         }
 
     def _load_legacy(self, sources: Path | list[Path]) -> dict[str, str]:

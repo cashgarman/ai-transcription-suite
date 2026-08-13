@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+import os
 from pathlib import Path
 
 from speaker_transcriber.export.meeting_document import (
@@ -16,7 +17,33 @@ from speaker_transcriber.export.meeting_document import (
 )
 
 
+_GOBJECT_DLL = "libgobject-2.0-0.dll"
+_DEFAULT_DLL_DIRS = (
+    Path(r"C:\msys64\ucrt64\bin"),
+    Path(r"C:\msys64\mingw64\bin"),
+    Path(r"C:\Program Files\GTK3-Runtime Win64\bin"),
+)
+
+
+def configure_weasyprint_libraries() -> list[str]:
+    existing = [
+        part.strip()
+        for part in os.environ.get("WEASYPRINT_DLL_DIRECTORIES", "").split(os.pathsep)
+        if part.strip()
+    ]
+    discovered = [
+        str(path)
+        for path in _DEFAULT_DLL_DIRS
+        if (path / _GOBJECT_DLL).is_file() and str(path) not in existing
+    ]
+    combined = existing + discovered
+    if combined:
+        os.environ["WEASYPRINT_DLL_DIRECTORIES"] = os.pathsep.join(combined)
+    return combined
+
+
 def weasyprint_available() -> bool:
+    configure_weasyprint_libraries()
     try:
         import weasyprint  # noqa: F401
     except Exception:

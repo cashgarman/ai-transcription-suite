@@ -5,7 +5,7 @@ from speaker_transcriber.export.csv_exporter import render_csv
 from speaker_transcriber.export.json_exporter import from_json_dict, render_json, to_json_dict
 from speaker_transcriber.export.markdown_exporter import render_markdown
 from speaker_transcriber.export.subtitle_exporter import render_srt, render_vtt
-from speaker_transcriber.export.text_exporter import render_text
+from speaker_transcriber.export.text_exporter import render_summary_source, render_text
 from speaker_transcriber.pipeline.types import TranscriptResult, TranscriptSegment, Word
 
 
@@ -35,6 +35,29 @@ def test_speaker_color_map_assigns_stable_colors() -> None:
 
     output = render_text(sample_result())
     assert "[00:00:02 - 00:00:06] Speaker 1" in output
+    assert "Welcome." in output
+
+
+def test_overlap_uses_display_names() -> None:
+    result = sample_result()
+    result.speakers = {"SPEAKER_00": "Cash", "SPEAKER_01": "GranSeba"}
+    result.segments[0].overlapping_speakers = ["SPEAKER_01"]
+    output = render_text(result)
+    assert "[overlap: GranSeba]" in output
+    assert "SPEAKER_01" not in output
+
+
+def test_summary_source_includes_speaker_map() -> None:
+    result = sample_result()
+    result.speakers = {
+        "SPEAKER_00": "Cash",
+        "SPEAKER_01": "Speaker 2",
+    }
+    output = render_summary_source(result)
+    assert "SPEAKER_00: Cash" in output
+    assert "unnamed" in output
+    assert "Speaker 2" in output
+    assert "[00:00:02 - 00:00:06] Cash" in output
     assert "Welcome." in output
 
 

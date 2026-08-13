@@ -1,13 +1,21 @@
-Create a detailed Markdown write-up of this transcript segment. This is an extraction pass,
-not the final meeting document.
+Extract a dense structured dump of this transcript segment. This is an extraction pass,
+not the final meeting document. Use compact Markdown bullets and short labeled lines, not prose.
 
-Collect actual speaker names and labels as they appear, plus names mentioned in dialogue.
-Do not paraphrase participants as a role group.
+Use these headings when the segment has material for them:
+- **Participants** — assigned display names from the speaker map, plus names mentioned in dialogue.
+  Do not list raw `SPEAKER_00`-style IDs when a display name exists. Do not invent names.
+  Do not paraphrase participants as a role group.
+- **Topics**
+- **Decisions**
+- **Action items** — owner, action, and priority when stated
+- **Questions**
+- **Risks / blockers / dependencies**
+- **Technical details** — numbers, deadlines, names, roles, constraints, systems
+- **Attributions** — who said what, when labels or names are available
 
 Preserve every substantive topic, decision, request, concern, question, answer, number,
-deadline, name, role, action item (owner, action, and priority when stated), constraint,
-risk, dependency, blocker, and technical detail. Attribute statements to speakers when
-labels or names are available.
+deadline, name, role, action item, constraint, risk, dependency, blocker, and technical detail.
+Drop filler, repetition, and narrative recap.
 
 Honor the markers `[MORE SEGMENTS FOLLOW]` and `[END OF TRANSCRIPT]`. If more segments
 follow, do not write a closing assessment or claim the meeting ended.

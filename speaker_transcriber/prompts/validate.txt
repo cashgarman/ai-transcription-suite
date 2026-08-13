@@ -1,4 +1,4 @@
-Review the draft meeting summary against the supplied transcript (or transcript segment) and
+Review the draft meeting summary against the supplied section extracts (or transcript) and
 return the full corrected Markdown document. Do not return a comment list.
 
 Check completeness: named participants, decisions, action items, open questions, risks,
@@ -11,5 +11,5 @@ cutoff or attribution disclaimers unless they are truly warranted.
 Preserve the required meeting-notes structure (title, participants, primary topics, executive
 summary, key decisions, detailed topic sections, action items table, open questions, risks,
 closing assessment). Add missing content and fix wrong attributions. Do not pad with
-speculation. If this segment is already covered correctly, return the draft unchanged aside
+speculation. If this material is already covered correctly, return the draft unchanged aside
 from necessary fixes.

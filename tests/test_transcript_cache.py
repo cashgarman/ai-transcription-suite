@@ -78,11 +78,28 @@ def test_transcript_cache_delete(tmp_path: Path) -> None:
     source = tmp_path / "meeting.mp4"
     source.touch()
     cache.save(sample_result(str(source.resolve())))
+    cache.save_summary(source, "# Notes\n\nCached meeting notes.")
     assert cache.exists(source)
     assert cache.speakers_path_for(source).is_file()
+    assert cache.summary_exists(source)
     cache.delete(source)
     assert not cache.exists(source)
     assert not cache.speakers_path_for(source).is_file()
+    assert not cache.summary_exists(source)
+
+
+def test_transcript_cache_saves_and_loads_summary(tmp_path: Path) -> None:
+    cache = TranscriptCache(directory=tmp_path)
+    source = tmp_path / "meeting.mp4"
+    source.touch()
+    markdown = "# Meeting Notes\n\n**Participants:** Alex"
+    cache.save_summary(source, markdown)
+    assert cache.summary_path_for(source) == tmp_path / "meeting.summary.md"
+    assert cache.summary_exists(source)
+    assert cache.load_summary(source) == markdown
+    cache.save_summary(source, "   ")
+    assert cache.load_summary(source) is None
+    assert not cache.summary_exists(source)
 
 
 def test_to_json_dict_serializes_source_files() -> None:

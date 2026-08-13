@@ -77,9 +77,9 @@ TOOLTIPS: dict[str, str] = {
         "merged into one set of meeting notes so the story stays in order."
     ),
     "validating": (
-        "Checking the summary against the transcript.\n\n"
-        "The draft notes are being compared with the original transcript so "
-        "important points are less likely to be dropped or invented."
+        "Checking the summary against the section extracts.\n\n"
+        "The draft notes are being compared with the extracted facts from the "
+        "transcript so important points are less likely to be dropped or invented."
     ),
     "formatting_notes": (
         "Cleaning up the meeting notes.\n\n"
@@ -140,6 +140,9 @@ _MESSAGE_KEYS: tuple[tuple[str, str], ...] = (
     ("summarizing for pdf", "summarizing"),
     ("model reasoning", "summarizing"),
     ("validating summary", "validating"),
+    ("checking extract", "validating"),
+    ("applying validated", "validating"),
+    ("missing facts", "validating"),
     ("formatting meeting", "formatting_notes"),
     ("formatting complete", "formatting_notes"),
     ("parsing meeting", "formatting_notes"),

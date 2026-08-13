@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import re
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -19,6 +20,9 @@ from speaker_transcriber.export.meeting_document import (
 if TYPE_CHECKING:
     from reportlab.lib.styles import ParagraphStyle
     from reportlab.platypus import Table
+
+
+LOGGER = logging.getLogger("speaker_transcriber.pdf")
 
 
 _BOLD = re.compile(r"\*\*(.+?)\*\*|__(.+?)__")
@@ -234,15 +238,50 @@ def markdown_to_reportlab(text: str) -> str:
     return escaped.replace("\n", "<br/>")
 
 
+def _try_weasyprint_export(document: MeetingDocument, path: Path) -> bool:
+    try:
+        from speaker_transcriber.export.weasyprint_exporter import (
+            export_weasyprint_pdf,
+            weasyprint_available,
+        )
+
+        if not weasyprint_available():
+            return False
+        export_weasyprint_pdf(document, path)
+        return True
+    except Exception as exc:
+        LOGGER.warning("WeasyPrint export failed for %s: %s", path, exc)
+        return False
+
+
 def export_meeting_pdf(
     document: MeetingDocument,
     path: Path,
     engine: str = "reportlab",
 ) -> None:
-    if str(engine or "reportlab").strip().lower() == "weasyprint":
-        from speaker_transcriber.export.weasyprint_exporter import export_weasyprint_pdf
-
-        export_weasyprint_pdf(document, path)
+    chosen = str(engine or "reportlab").strip().lower()
+    if chosen == "weasyprint":
+        if _try_weasyprint_export(document, path):
+            return
+        if reportlab_available():
+            LOGGER.warning(
+                "WeasyPrint is not available; falling back to ReportLab for %s",
+                path,
+            )
+            _export_reportlab_pdf(document, path)
+            return
+        raise RuntimeError(
+            "WeasyPrint is not available. Install it and its native libraries "
+            "(Pango/Cairo/GTK), or install ReportLab with `pip install reportlab`."
+        )
+    if reportlab_available():
+        _export_reportlab_pdf(document, path)
+        return
+    if _try_weasyprint_export(document, path):
+        LOGGER.warning(
+            "ReportLab is not available; falling back to WeasyPrint for %s",
+            path,
+        )
         return
     _export_reportlab_pdf(document, path)
 

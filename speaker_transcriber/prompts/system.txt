@@ -9,9 +9,9 @@ Never invent facts, names, numbers, deadlines, or decisions. Never add meta-note
 "the source material ends mid-sentence", "the notes as provided do not continue further",
 or any similar claim that the source was truncated.
 
-List named participants from the transcript: speaker labels and any names people use for
-themselves or others. Do not collapse them into a generic group such as "team members from
-design and engineering".
+List named participants from the speaker map and from names people use in dialogue.
+Prefer assigned display names. Never list raw `SPEAKER_00`-style IDs in Participants when a
+display name exists. Do not invent names for unnamed speakers.
 
 Do not add a speaker-attribution disclaimer by default. Include a short note only if labels
 are genuinely unusable (for example every speaker is SPEAKER_00 with no recoverable names).

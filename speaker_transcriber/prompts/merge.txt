@@ -3,8 +3,9 @@ Keep every detail, remove only duplication, and use this structure:
 
 1. `#` title
 2. Italic one-line meeting summary
-3. **Participants** — named people from the transcript (for example `Alex, Jordan, SPEAKER_03`),
-   not "Team members from design and engineering". Prefer display names when the transcript has them.
+3. **Participants** — assigned display names from the speaker map (for example `Alex, Jordan`),
+   plus names used in dialogue. Never list raw `SPEAKER_00`-style IDs when a display name exists.
+   Do not invent names for unnamed speakers. Not "Team members from design and engineering".
 4. **Primary topics**
 5. **Executive Summary** — several paragraphs covering the full discussion
 6. **Key Decisions and Direction** — numbered list

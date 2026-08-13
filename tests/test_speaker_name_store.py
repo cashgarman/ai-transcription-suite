@@ -55,6 +55,28 @@ def test_speaker_name_store_apply_preserves_unknown_labels(tmp_path: Path) -> No
     assert merged["SPEAKER_01"] == "Speaker 2"
 
 
+def test_speaker_name_store_ignores_generic_names(tmp_path: Path) -> None:
+    store = SpeakerNameStore(directory=tmp_path)
+    source = tmp_path / "meeting.mp3"
+    source.write_bytes(b"a")
+    store.save(
+        [source],
+        {"SPEAKER_00": "Speaker 1", "SPEAKER_01": "SPEAKER_01", "SPEAKER_02": "Alice"},
+    )
+    assert store.load([source]) == {"SPEAKER_02": "Alice"}
+
+
+def test_speaker_name_store_does_not_wipe_names_on_generic_save(
+    tmp_path: Path,
+) -> None:
+    store = SpeakerNameStore(directory=tmp_path)
+    source = tmp_path / "meeting.mp3"
+    source.write_bytes(b"a")
+    store.save([source], {"SPEAKER_00": "Alice"})
+    store.save([source], {"SPEAKER_00": "Speaker 1"})
+    assert store.load([source]) == {"SPEAKER_00": "Alice"}
+
+
 def test_transcript_cache_saves_speaker_names_sidecar(tmp_path: Path) -> None:
     cache = TranscriptCache(directory=tmp_path)
     source = tmp_path / "meeting.mp4"
@@ -83,6 +105,37 @@ def test_transcript_cache_prefers_sidecar_speaker_names(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
+    loaded = cache.load(source)
+    assert loaded is not None
+    assert loaded.speakers["SPEAKER_00"] == "Alice"
+
+
+def test_transcript_cache_does_not_persist_generic_speaker_names(
+    tmp_path: Path,
+) -> None:
+    cache = TranscriptCache(directory=tmp_path)
+    source = tmp_path / "meeting.mp4"
+    source.touch()
+    result = sample_result(str(source.resolve()))
+    result.speakers = {"SPEAKER_00": "Speaker 1", "SPEAKER_01": "SPEAKER_01"}
+    cache.save(result)
+    assert not cache.speakers_path_for(source).is_file()
+    loaded = cache.load(source)
+    assert loaded is not None
+    assert loaded.speakers["SPEAKER_00"] == "Speaker 1"
+
+
+def test_transcript_cache_keeps_custom_names_when_generics_are_saved(
+    tmp_path: Path,
+) -> None:
+    cache = TranscriptCache(directory=tmp_path)
+    source = tmp_path / "meeting.mp4"
+    source.touch()
+    result = sample_result(str(source.resolve()))
+    result.speakers = {"SPEAKER_00": "Alice"}
+    cache.save(result)
+    result.speakers = {"SPEAKER_00": "Speaker 1"}
+    cache.save(result)
     loaded = cache.load(source)
     assert loaded is not None
     assert loaded.speakers["SPEAKER_00"] == "Alice"

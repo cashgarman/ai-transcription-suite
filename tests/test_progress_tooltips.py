@@ -31,7 +31,7 @@ def test_message_overrides_generic_stage() -> None:
 def test_summary_and_idle_messages() -> None:
     assert "sections" in tooltip_for_progress(None, "Summarizing section 2 of 5…").lower()
     assert "merged" in tooltip_for_progress(None, "Merging summaries (round 1, batch 1 of 2)…").lower()
-    assert "compared" in tooltip_for_progress(None, "Validating summary against transcript…").lower()
+    assert "compared" in tooltip_for_progress(None, "Validating summary against section extracts…").lower()
     assert "pdf" in tooltip_for_progress(None, "Writing PDF…").lower()
     assert "saved transcript" in tooltip_for_progress(None, "Loaded from cache").lower()
     assert "nothing is running" in tooltip_for_progress(None, "Ready").lower()

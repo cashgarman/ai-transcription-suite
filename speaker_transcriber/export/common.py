@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from speaker_transcriber.pipeline.types import TranscriptResult
+from speaker_transcriber.speaker_names import is_generic_speaker_name
 
 
 SPEAKER_COLORS = (
@@ -13,6 +14,25 @@ SPEAKER_COLORS = (
     "#FFD54F",
     "#90A4AE",
 )
+
+
+def render_speaker_legend(result: TranscriptResult) -> str:
+    if not result.speakers:
+        return ""
+    lines = [
+        "Speaker map (use these names in the notes; do not list raw SPEAKER_XX IDs "
+        "in Participants when a display name exists):"
+    ]
+    for label in sorted(result.speakers):
+        name = result.speakers.get(label, label)
+        if is_generic_speaker_name(name, label):
+            lines.append(
+                f"- {label}: unnamed. Do not invent a name. Do not list {label} "
+                f"as a participant; omit them or use '{name}' only if needed for attribution."
+            )
+        else:
+            lines.append(f"- {label}: {name}")
+    return "\n".join(lines)
 
 
 def speaker_color_map(result: TranscriptResult) -> dict[str, str]:

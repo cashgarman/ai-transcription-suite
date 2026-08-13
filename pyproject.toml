@@ -20,6 +20,7 @@ dependencies = [
     "nvidia-cudnn-cu12==8.9.7.29",
     "ollama>=0.4",
     "reportlab>=4.2",
+    "weasyprint>=62",
 ]
 
 [project.optional-dependencies]

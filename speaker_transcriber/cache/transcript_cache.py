@@ -10,6 +10,11 @@ from speaker_transcriber.audio.sources import MediaSource
 from speaker_transcriber.config import app_data_dir
 from speaker_transcriber.export.json_exporter import from_json_dict, to_json_dict
 from speaker_transcriber.pipeline.types import TranscriptResult
+from speaker_transcriber.speaker_names import (
+    apply_cached_speaker_names,
+    custom_speaker_names,
+    merge_cached_speaker_names,
+)
 
 
 LOGGER = logging.getLogger("speaker_transcriber.cache")
@@ -30,8 +35,14 @@ class TranscriptCache:
     def speakers_path_for(self, source: Path | list[Path]) -> Path:
         return self.directory / f"{self._cache_stem(source)}.speakers.json"
 
+    def summary_path_for(self, source: Path | list[Path]) -> Path:
+        return self.directory / f"{self._cache_stem(source)}.summary.md"
+
     def exists(self, source: Path | list[Path]) -> bool:
         return self.path_for(source).is_file()
+
+    def summary_exists(self, source: Path | list[Path]) -> bool:
+        return self.summary_path_for(source).is_file()
 
     def load(self, source: Path | list[Path]) -> TranscriptResult | None:
         path = self.path_for(source)
@@ -45,9 +56,10 @@ class TranscriptCache:
             result.source_files = media_source.source_files_for_result()
             stored_names = self._load_speaker_names(source)
             if stored_names:
-                for label, name in stored_names.items():
-                    if label in result.speakers:
-                        result.speakers[label] = name
+                result.speakers = apply_cached_speaker_names(
+                    result.speakers,
+                    stored_names,
+                )
             return result
         except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
             LOGGER.warning("Failed to load transcript cache %s: %s", path, exc)
@@ -62,6 +74,8 @@ class TranscriptCache:
         else:
             cache_source = Path(result.source_file)
         path = self.path_for(cache_source)
+        stored_names = self._load_speaker_names(cache_source)
+        result.speakers = apply_cached_speaker_names(result.speakers, stored_names)
         payload = json.dumps(to_json_dict(result), indent=2, ensure_ascii=False) + "\n"
         directory = path.parent
         with tempfile.NamedTemporaryFile(
@@ -76,6 +90,37 @@ class TranscriptCache:
         os.replace(temp_path, path)
         self._save_speaker_names(cache_source, result.speakers)
 
+    def load_summary(self, source: Path | list[Path]) -> str | None:
+        path = self.summary_path_for(source)
+        if not path.is_file():
+            return None
+        try:
+            text = path.read_text(encoding="utf-8").strip()
+        except OSError as exc:
+            LOGGER.warning("Failed to load summary cache %s: %s", path, exc)
+            return None
+        return text or None
+
+    def save_summary(self, source: Path | list[Path], markdown: str) -> None:
+        path = self.summary_path_for(source)
+        text = (markdown or "").strip()
+        if not text:
+            if path.is_file():
+                path.unlink()
+            return
+        self.directory.mkdir(parents=True, exist_ok=True)
+        payload = text + "\n"
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=self.directory,
+            delete=False,
+            suffix=".tmp",
+        ) as handle:
+            handle.write(payload)
+            temp_path = handle.name
+        os.replace(temp_path, path)
+
     def delete(self, source: Path | list[Path]) -> None:
         path = self.path_for(source)
         if path.is_file():
@@ -83,6 +128,9 @@ class TranscriptCache:
         speakers_path = self.speakers_path_for(source)
         if speakers_path.is_file():
             speakers_path.unlink()
+        summary_path = self.summary_path_for(source)
+        if summary_path.is_file():
+            summary_path.unlink()
 
     def _load_speaker_names(self, source: Path | list[Path]) -> dict[str, str]:
         path = self.speakers_path_for(source)
@@ -95,11 +143,13 @@ class TranscriptCache:
             return {}
         if not isinstance(payload, dict):
             return {}
-        return {
-            str(label): str(name).strip()
-            for label, name in payload.items()
-            if str(name).strip()
-        }
+        return custom_speaker_names(
+            {
+                str(label): str(name).strip()
+                for label, name in payload.items()
+                if str(name).strip()
+            }
+        )
 
     def _save_speaker_names(
         self,
@@ -107,11 +157,10 @@ class TranscriptCache:
         speakers: dict[str, str],
     ) -> None:
         path = self.speakers_path_for(source)
-        cleaned = {
-            str(label): str(name).strip()
-            for label, name in speakers.items()
-            if str(name).strip()
-        }
+        cleaned = merge_cached_speaker_names(
+            speakers,
+            self._load_speaker_names(source),
+        )
         if not cleaned:
             if path.is_file():
                 path.unlink()

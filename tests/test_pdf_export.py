@@ -1,3 +1,7 @@
+from pathlib import Path
+
+import pytest
+
 from speaker_transcriber.export.meeting_document import (
     ActionTableBlock,
     NumberedListBlock,
@@ -190,6 +194,10 @@ def test_export_meeting_pdf_dispatches_weasyprint(monkeypatch, tmp_path) -> None
         called["path"] = path
 
     monkeypatch.setattr(
+        "speaker_transcriber.export.weasyprint_exporter.weasyprint_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
         "speaker_transcriber.export.weasyprint_exporter.export_weasyprint_pdf",
         fake_export,
     )
@@ -201,10 +209,51 @@ def test_export_meeting_pdf_dispatches_weasyprint(monkeypatch, tmp_path) -> None
     assert not path.exists()
 
 
+def test_weasyprint_falls_back_to_reportlab_when_unavailable(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(
+        "speaker_transcriber.export.weasyprint_exporter.weasyprint_available",
+        lambda: False,
+    )
+    document = parse_meeting_markdown(COMPLETE_MARKDOWN)
+    path = tmp_path / "meeting.pdf"
+    export_meeting_pdf(document, path, engine="weasyprint")
+    data = path.read_bytes()
+    assert data.startswith(b"%PDF")
+    assert len(data) > 500
+
+
+def test_weasyprint_runtime_error_falls_back_to_reportlab(monkeypatch, tmp_path) -> None:
+    def boom(document, path) -> None:
+        raise RuntimeError(
+            "WeasyPrint is not available. Install it and its native libraries "
+            "(Pango/Cairo/GTK), or switch Format PDF notes to ReportLab."
+        )
+
+    monkeypatch.setattr(
+        "speaker_transcriber.export.weasyprint_exporter.weasyprint_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        "speaker_transcriber.export.weasyprint_exporter.export_weasyprint_pdf",
+        boom,
+    )
+    document = parse_meeting_markdown(COMPLETE_MARKDOWN)
+    path = tmp_path / "meeting.pdf"
+    export_meeting_pdf(document, path, engine="weasyprint")
+    data = path.read_bytes()
+    assert data.startswith(b"%PDF")
+    assert len(data) > 500
+
+
 def test_missing_reportlab_explains_install(monkeypatch, tmp_path) -> None:
     import speaker_transcriber.export.pdf_exporter as pdf_exporter
 
     monkeypatch.setattr(pdf_exporter, "_REPORTLAB_READY", False)
+    monkeypatch.setattr(pdf_exporter, "reportlab_available", lambda: False)
+    monkeypatch.setattr(
+        "speaker_transcriber.export.weasyprint_exporter.weasyprint_available",
+        lambda: False,
+    )
 
     real_import = __import__
 
@@ -231,3 +280,31 @@ def test_weasyprint_html_includes_title() -> None:
     html = meeting_document_html(document)
     assert "<h1>Sound Project Integration and Game Development Planning</h1>" in html
     assert "<table>" in html
+
+
+def test_configure_weasyprint_libraries_discovers_gobject(tmp_path, monkeypatch) -> None:
+    import os
+
+    from speaker_transcriber.export import weasyprint_exporter as module
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "libgobject-2.0-0.dll").write_bytes(b"")
+    monkeypatch.setattr(module, "_DEFAULT_DLL_DIRS", (bin_dir,))
+    monkeypatch.delenv("WEASYPRINT_DLL_DIRECTORIES", raising=False)
+    found = module.configure_weasyprint_libraries()
+    assert str(bin_dir) in found
+    assert str(bin_dir) in os.environ["WEASYPRINT_DLL_DIRECTORIES"]
+
+
+def test_export_meeting_pdf_weasyprint_writes_pdf(tmp_path) -> None:
+    from speaker_transcriber.export.weasyprint_exporter import weasyprint_available
+
+    if not weasyprint_available():
+        pytest.skip("WeasyPrint native libraries are not available")
+    document = parse_meeting_markdown(COMPLETE_MARKDOWN)
+    path = tmp_path / "meeting.pdf"
+    export_meeting_pdf(document, path, engine="weasyprint")
+    data = path.read_bytes()
+    assert data.startswith(b"%PDF")
+    assert len(data) > 500

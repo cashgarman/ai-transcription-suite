@@ -1,0 +1,5 @@
+Continue the Markdown meeting document from where it stopped. Do not restart from the title.
+Do not repeat earlier headings or paragraphs. Do not add a truncation or source-cutoff disclaimer.
+If the last line is mid-sentence or a partial table row, finish that line first, then keep going
+until the required meeting-notes structure is complete (action items table, open questions,
+risks, closing assessment).

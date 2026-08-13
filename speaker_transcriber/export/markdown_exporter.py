@@ -22,7 +22,7 @@ def render_markdown(result: TranscriptResult) -> str:
         if segment.overlapping_speakers:
             lines.extend(
                 [
-                    f"> Overlapping speech: {', '.join(segment.overlapping_speakers)}",
+                    f"> Overlapping speech: {', '.join(display_speaker(result, speaker) for speaker in segment.overlapping_speakers)}",
                     "",
                 ]
             )
