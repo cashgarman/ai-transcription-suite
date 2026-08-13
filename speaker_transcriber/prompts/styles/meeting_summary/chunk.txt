@@ -7,13 +7,18 @@ so you can tell what is new. Never restate it, summarize it, or recap it.
 
 ## Structure
 
-- Use `##` headings named for the actual topics discussed, in the order they came up, for
-  example `## Packaged Build Failures`. Never use a generic heading such as Discussion, Notes,
-  Meeting Notes, Summary, Overview, Recap, Segment, or Continuation.
-- Under each topic write compact Markdown bullets, not flowing prose. One bullet per point.
-- Attribute each point to the speaker who made it, inline, by the name or label the transcript
-  uses, for example `Cash: the packaged build fails on the shader step`. Do not write a
-  participants list; the names belong in the bullets.
+- Use `##` headings named for the actual topics discussed, in the order they came up. Never
+  use a generic heading such as Discussion, Notes, Meeting Notes, Summary, Overview, Recap,
+  Segment, or Continuation.
+- Under each topic write compact Markdown bullets, not flowing prose. One bullet per point,
+  attributed inline to the speaker by the name or label the transcript uses. The shape:
+
+## Packaged Build Failures
+
+- Cash: the packaged build fails on the shader step; the editor build is fine.
+- Andrew: suspects the June driver update and will test on the older driver today.
+
+- Do not write a participants list; the names belong on the bullets.
 - After the topics, add these headings only when this segment has material for them:
   `## Decisions`, `## Action items` (owner, action, and priority when stated), `## Questions`
   (asked, and answered when they were answered), `## Risks and blockers`, and
@@ -32,6 +37,6 @@ compress a long exchange into a single sentence.
 ## Output
 
 Start directly with the first `##` topic heading. Do not write a document title, a preamble, a
-lead-in sentence, a "Meeting Notes" or "Continuation Brief" header, or a closing summary. Do
-not echo the `[MORE SEGMENTS FOLLOW]` or `[END OF TRANSCRIPT]` marker. If more segments
-follow, do not write a closing assessment and do not claim the meeting ended.
+lead-in sentence, or a closing summary. Do not echo the `[MORE SEGMENTS FOLLOW]` or
+`[END OF TRANSCRIPT]` marker. If more segments follow, do not write a closing assessment and
+do not claim the meeting ended.

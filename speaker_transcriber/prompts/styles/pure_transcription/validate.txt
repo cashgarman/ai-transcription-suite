@@ -1,5 +1,6 @@
-Review this cleaned transcript against the source extracts and return the full corrected
-transcript. Do not return a comment list.
+Below is a cleaned transcript under `## Draft summary`, followed by the source material under
+`## Section extracts`. Return the full corrected transcript, starting directly with its first
+turn. Do not return a comment list or an explanation, and do not echo either wrapper heading.
 
 Check that no turn was dropped, merged into another speaker's turn, reordered, or paraphrased
 into different words, and that every name, number, and technical term matches the source.

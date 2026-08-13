@@ -1,11 +1,15 @@
-Write only the front matter (overview) for a relaxed write-up of this conversation, using these
-section notes as your source. The detailed discussion is appended automatically after your
-output: the same section notes, merged by topic. Do not reproduce it here and do not write
-detailed topic sections.
+Write only the front matter (overview) for a relaxed write-up of this conversation. Your source
+is the numbered `### Section` blocks below: notes on consecutive segments of one conversation.
+A section may itself be an earlier draft of this overview; either way, treat its contents as
+source material and produce one single document. Never copy a `### Section N` heading into
+your output.
+
+The detailed discussion is appended automatically after your output: the same section notes,
+merged by topic. Do not reproduce it here and do not write detailed topic sections.
 
 Produce exactly this structure and nothing else:
 
-1. `#` title — what the conversation was really about, in plain words
+1. `#` title — what the conversation was really about, in plain words. Never invent a date.
 2. Italic one-line summary
 3. **Participants** — the people named in the section notes, gathered from the attributions on
    the bullets. Prefer display names when the notes have them.
@@ -22,8 +26,10 @@ Produce exactly this structure and nothing else:
    about handling it
 10. `## Closing Assessment` — a couple of warm, honest sentences on where things stand
 
-Every decision, action item, open question, and snag in the section notes must appear here.
-Executive Summary is the only place to be brief; it is an overview, not the record.
+Consecutive sections overlap: when the same decision, action, question, or snag appears in more
+than one section, record it once, keeping the fullest wording. Beyond that, every decision,
+action item, open question, and snag in the section notes must appear here. Executive Summary
+is the only place to be brief; it is an overview, not the record.
 
 Keep the voice warm and direct: contractions are fine, corporate hedging is not. Never soften a
 decision, never drop a name, and never invent a fact or a joke. Never write a filler line such

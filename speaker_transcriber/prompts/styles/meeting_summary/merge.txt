@@ -1,11 +1,14 @@
-Write only the front matter (overview) for a meeting document, using these section notes as
-your source. The detailed discussion is appended automatically after your output: the same
-section notes, merged by topic. Do not reproduce it here and do not write detailed topic
-sections.
+Write only the front matter (overview) for a meeting document. Your source is the numbered
+`### Section` blocks below: notes on consecutive segments of one meeting. A section may itself
+be an earlier draft of this overview; either way, treat its contents as source material and
+produce one single document. Never copy a `### Section N` heading into your output.
+
+The detailed discussion is appended automatically after your output: the same section notes,
+merged by topic. Do not reproduce it here and do not write detailed topic sections.
 
 Produce exactly this structure and nothing else:
 
-1. `#` title
+1. `#` title — the meeting's actual subject, not "Meeting Notes". Never invent a date.
 2. Italic one-line meeting summary
 3. **Participants** — the people named in the section notes (for example `Alex, Jordan,
    SPEAKER_03`), gathered from the attributions on the bullets, not "Team members from design
@@ -18,7 +21,9 @@ Produce exactly this structure and nothing else:
 9. `## Risks, Dependencies, and Blockers` — include mitigation when it was discussed
 10. `## Closing Assessment` — short
 
-Every decision, action item, open question, and risk in the section notes must appear here.
+Consecutive sections overlap: when the same decision, action, question, or risk appears in
+more than one section, record it once, keeping the fullest wording. Beyond that, every
+decision, action item, open question, and risk in the section notes must appear here.
 Executive Summary is the only place to be brief; it is an overview, not the record.
 
 Stop after the closing assessment. Do not add detailed topic sections, do not restate the

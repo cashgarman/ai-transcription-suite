@@ -1,11 +1,15 @@
-Write only the front matter (overview) for a business meeting document, using these section
-notes as your source. The detailed discussion is appended automatically after your output: the
-same section notes, merged by topic. Do not reproduce it here and do not write detailed topic
-sections.
+Write only the front matter (overview) for a business meeting document. Your source is the
+numbered `### Section` blocks below: notes on consecutive segments of one meeting. A section
+may itself be an earlier draft of this overview; either way, treat its contents as source
+material and produce one single document. Never copy a `### Section N` heading into your
+output.
+
+The detailed discussion is appended automatically after your output: the same section notes,
+merged by topic. Do not reproduce it here and do not write detailed topic sections.
 
 Produce exactly this structure and nothing else:
 
-1. `#` title
+1. `#` title — the meeting's actual subject, not "Business Meeting Notes". Never invent a date.
 2. Italic one-line meeting summary
 3. **Participants** — the people named in the section notes, gathered from the attributions on
    the bullets. Prefer display names when the notes have them.
@@ -25,10 +29,12 @@ Produce exactly this structure and nothing else:
 13. `## Risks, Dependencies, and Blockers` — include mitigation when it was discussed
 14. `## Closing Assessment` — short
 
-Every goal, figure, stakeholder, date, decision, action item, open question, and risk in the
-section notes must appear here. Executive Summary is the only place to be brief; it is an
-overview, not the record. Omit sections 6 through 9 only when the notes truly have nothing for
-them; never write a filler line such as "None recorded".
+Consecutive sections overlap: when the same goal, figure, decision, action, question, or risk
+appears in more than one section, record it once, keeping the fullest wording. Beyond that,
+every goal, figure, stakeholder, date, decision, action item, open question, and risk in the
+notes must appear here. Executive Summary is the only place to be brief. Omit sections 6
+through 9 only when the notes truly have nothing for them; never write a filler line such as
+"None recorded".
 
 Stop after the closing assessment. Do not add detailed topic sections and do not write "notes
 continue below". Do not emit a speaker-attribution disclaimer unless attribution is actually

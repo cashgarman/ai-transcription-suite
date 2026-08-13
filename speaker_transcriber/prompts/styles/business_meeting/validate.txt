@@ -1,14 +1,17 @@
-Review the draft front matter against the supplied section extracts and return the full
-corrected Markdown front matter. Do not return a comment list.
+Below is a draft front matter under `## Draft summary`, followed by the source notes under
+`## Section extracts`. Return the full corrected Markdown front matter, starting directly with
+its `#` title. Do not return a comment list or an explanation, and do not echo either wrapper
+heading.
 
-Check the numbers first: every figure in the draft must match the source exactly, with the same
-unit and period, and must still be marked as an actual, a forecast, or an estimate the way the
-source marked it. Delete any figure that does not appear in the source, and restore any figure
-the draft dropped.
+Check the numbers first: every figure in the draft must match the extracts exactly, with the
+same unit and period, and must still be marked as an actual, a forecast, or an estimate the way
+the source marked it. Delete any figure that does not appear in the extracts, and restore any
+figure the draft dropped.
 
 Check completeness: named participants, goals and their measures, budget and cost, every
 stakeholder and what they want, every date and milestone, decisions, action items and
-commitments with their owners, open questions, risks, dependencies, and blockers.
+commitments with their owners, open questions, risks, dependencies, and blockers. The extracts
+overlap, so an item repeated across them still appears only once.
 
 Check accuracy: no invented commitments, no dropped owners, no contradicted decisions, and no
 cutoff or attribution disclaimers unless they are truly warranted.
@@ -17,4 +20,5 @@ Keep the front-matter structure (title, one-line summary, participants, primary 
 executive summary, goals and KPIs, numbers and budget, stakeholders, timeline and milestones,
 key decisions, action items table, open questions, risks, closing assessment). Never shorten or
 delete existing correct content, and do not add detailed topic sections; the detailed
-discussion is appended separately.
+discussion is appended separately. If the draft is already correct, return it unchanged aside
+from necessary fixes.

@@ -7,9 +7,10 @@ Markdown pipe table with columns Owner | Action | Priority.
 
 Keep every fact, name, number, version, identifier, decision, and piece of reasoning from the
 source. This is a formatting pass, not a summarization pass: never shorten, merge, or drop
-content, and never invent content.
+content, and never invent content. When the source repeats the same point, keep it once.
 
 Omit a section rather than filling it with "None recorded". Make the follow-up table a real
 pipe table even if the source used bullets or prose.
 
-Output Markdown only, starting with the `#` title.
+Output Markdown only, starting directly with the `#` title: no preamble and no code fence
+around the document.

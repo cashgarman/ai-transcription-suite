@@ -6,10 +6,11 @@ bullets, `## Blockers` as a Markdown pipe table with columns Owner | Action | Pr
 `## Announcements`, and `## Shoutouts`.
 
 Keep every update, blocker, ticket number, name, and date from the source. This is a formatting
-pass, not a summarization pass: never shorten, merge, or drop content, and never invent content.
-Each person appears exactly once, with all of their material in one block.
+pass, not a summarization pass: never shorten, merge, or drop content, and never invent
+content. Each person appears exactly once, with all of their material in one block; a point the
+source repeats appears once.
 
 Make the blockers table a real pipe table even if the source used bullets or prose. Omit a
 section rather than writing "None reported".
 
-Output Markdown only, starting with the `#` title.
+Output Markdown only, starting directly with the `#` title: no preamble and no code fence.

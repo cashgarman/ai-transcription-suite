@@ -6,14 +6,17 @@ so you can tell what is new. Never restate it, summarize it, or recap it.
 
 ## Structure
 
-- Use `##` headings named for the actual topics discussed, in the order they came up, for
-  example `## The Launch Trailer`. Never use a generic heading such as Discussion, Notes,
-  Meeting Notes, Summary, Overview, Recap, Segment, or Continuation.
+- Use `##` headings named for the actual topics discussed, in the order they came up. Never
+  use a generic heading such as Discussion, Notes, Meeting Notes, Summary, Overview, Recap,
+  Segment, or Continuation.
 - Under each topic write compact Markdown bullets. One point per bullet, written as a readable
-  sentence rather than a clipped fragment.
-- Attribute each point to the person who made it, inline, by the name or label the transcript
-  uses, for example `Cash: the packaged build keeps dying on the shader step`. Do not write a
-  participants list.
+  sentence rather than a clipped fragment, attributed inline to the person by the name or
+  label the transcript uses. Do not write a participants list. The shape:
+
+## The Launch Trailer
+
+- Cash: the packaged build keeps dying on the shader step, which blocks the trailer capture.
+
 - After the topics, add these headings only when this segment has material for them:
   `## Decisions`, `## Action items` (owner, action, and priority when stated), `## Questions`
   (asked, and answered when they were answered), `## Snags` (anything blocked, stuck, or

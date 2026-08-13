@@ -6,7 +6,7 @@ Objections.
 
 Each slide is three to six short bullets, one idea per bullet. Convert prose into bullets. Keep
 every fact, number, name, and claim from the source; this is a formatting pass, not a
-summarization pass. Do not invent content, and omit any slide the source has nothing for rather
-than writing a filler bullet.
+summarization pass. When the source repeats a claim, keep it once. Do not invent content, and
+omit any slide the source has nothing for rather than writing a filler bullet.
 
-Output Markdown only, starting with the `#` title.
+Output Markdown only, starting directly with the `#` title: no preamble and no code fence.

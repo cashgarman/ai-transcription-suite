@@ -1,4 +1,8 @@
-Write the external newsletter from these section extracts. Your output is the whole issue.
+Write the external newsletter. Your output is the whole issue. Your source is the numbered
+`### Section` blocks below: publishable material pulled from consecutive segments of one
+discussion. A section may itself be an earlier draft of the issue; either way, treat its
+contents as source material and produce one single issue. Never copy a `### Section N` heading
+into your output.
 
 Produce exactly this structure:
 
@@ -12,11 +16,16 @@ Produce exactly this structure:
 6. `## What's Next` — a short paragraph on direction, with no promises the source did not make.
 7. `## Thank You` — a brief closing line to the audience. Omit if it would be empty filler.
 
-Everything under `## Not for publication` in the extracts is excluded. Nothing internal —
+Everything under `## Not for publication` in the sections is excluded. Nothing internal —
 blockers, disagreements, criticism, costs, tooling, speculative plans, individual names
 attached to opinions — appears anywhere in the issue.
+
+The sections overlap: when the same item appears in more than one section, it appears once in
+the issue, keeping the fullest wording. Beyond that, every publishable highlight and shipping
+item in the sections is covered.
 
 Never invent a feature, a number, a date, or a customer. Never turn a "we hope to" into a "we
 will". Omit a section rather than padding it.
 
-Output Markdown only, starting with the `#` headline. Do not append the raw discussion notes.
+Output Markdown only, starting directly with the `#` headline: no preamble and no code fence.
+Do not append the raw discussion notes.

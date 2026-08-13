@@ -1,11 +1,14 @@
-Review the draft pitch outline against the supplied extracts and return the full corrected
-Markdown outline. Do not return a comment list.
+Below is a draft pitch outline under `## Draft summary`, followed by the source material under
+`## Section extracts`. Return the full corrected Markdown outline, starting directly with its
+`#` title. Do not return a comment list or an explanation, and do not echo either wrapper
+heading.
 
 Check accuracy first: every number, customer, competitor, date, price, and claim in the draft
 must appear in the extracts. Delete anything that does not, rather than softening it.
 
 Check completeness: stated proof points, the actual ask, and the objections raised in the room
-must all be present.
+must all be present. The extracts overlap, so a claim repeated across them still appears only
+once.
 
 Keep the structure (title, logline, Problem, Insight, Solution, Proof, Market and Competition,
 Business Model, Ask, Risks and Objections), keep the bullets short, and keep slides omitted

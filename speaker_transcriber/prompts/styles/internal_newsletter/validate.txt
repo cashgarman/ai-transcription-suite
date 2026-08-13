@@ -1,8 +1,11 @@
-Review the draft internal newsletter against the supplied extracts and return the full
-corrected Markdown issue. Do not return a comment list.
+Below is a draft internal newsletter under `## Draft summary`, followed by the source material
+under `## Section extracts`. Return the full corrected Markdown issue, starting directly with
+its `#` headline. Do not return a comment list or an explanation, and do not echo either
+wrapper heading.
 
 Check completeness: every decision, owner, deadline, blocked item, open argument, number, and
-piece of praise in the extracts must be present.
+piece of praise in the extracts must be present. The extracts overlap, so an item repeated
+across them still appears only once.
 
 Check accuracy: no invented facts, numbers, dates, or compliments; no owner dropped from the
 table; no decision softened or contradicted; disagreements still shown as unsettled rather than

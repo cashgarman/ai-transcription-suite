@@ -8,6 +8,8 @@ formatting pass, not a summarization pass: never drop content and never invent c
 
 Every line is `**Host A:** spoken text` or `**Host B:** spoken text`, one paragraph per line.
 No document title, no headings, no bullet lists, no tables, no stage directions or bracketed
-cues. Write for the ear: short sentences and plain words.
+cues. Write for the ear: short sentences, plain words, and figures written the way a voice
+would say them ("four million dollars", not "$4M").
 
-Output Markdown only, starting with the first host line.
+Output Markdown only, starting directly with the first host line: no preamble and no code
+fence.

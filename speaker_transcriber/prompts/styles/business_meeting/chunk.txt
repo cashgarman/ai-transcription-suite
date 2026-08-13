@@ -6,13 +6,17 @@ so you can tell what is new. Never restate it, summarize it, or recap it.
 
 ## Structure
 
-- Use `##` headings named for the actual topics discussed, in the order they came up, for
-  example `## Q3 Pricing Change`. Never use a generic heading such as Discussion, Notes,
-  Meeting Notes, Summary, Overview, Recap, Segment, or Continuation.
-- Under each topic write compact Markdown bullets, not flowing prose. One bullet per point.
-- Attribute each point to the speaker who made it, inline, by the name or label the transcript
-  uses, for example `Brian: the publisher wants a build by the end of the quarter`. Do not
-  write a participants list.
+- Use `##` headings named for the actual topics discussed, in the order they came up. Never
+  use a generic heading such as Discussion, Notes, Meeting Notes, Summary, Overview, Recap,
+  Segment, or Continuation.
+- Under each topic write compact Markdown bullets, one point per bullet, attributed inline to
+  the speaker by the name or label the transcript uses. Do not write a participants list.
+  The shape:
+
+## Q3 Pricing Change
+
+- Brian: the publisher wants a build by the end of the quarter; the contract depends on it.
+
 - After the topics, add these headings only when this segment has material for them:
   `## Goals and targets` (objectives and the measures attached to them), `## Numbers`
   (every figure with its unit, period, and whether it is actual, forecast, or estimate),

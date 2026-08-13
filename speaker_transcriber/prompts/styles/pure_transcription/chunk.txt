@@ -2,7 +2,10 @@ Clean up this transcript segment. Keep every turn that was spoken.
 
 ## Rules
 
-- One Markdown paragraph per turn, in the form `**Speaker:** what they said`.
+- One Markdown paragraph per turn, in the form `**Speaker:** what they said`. For example:
+
+**Cash:** The packaged build keeps failing on the shader step, and I can't tell why yet.
+
 - Use the speaker labels the segment already uses. If a person is addressed by name and the
   label is generic, you may use that name instead, but never guess who someone is.
 - Drop filler sounds, stutters, repeated words, and abandoned false starts. Keep everything
@@ -11,6 +14,8 @@ Clean up this transcript segment. Keep every turn that was spoken.
   improve what someone said, and do not translate slang into formal English.
 - Preserve every name, number, date, file name, and technical term exactly as spoken.
 - Keep the turns in their original order. Never merge two speakers into one turn.
+- This segment may begin or end mid-sentence because it was cut mechanically. Transcribe
+  exactly what is present; never invent words to complete a cut-off sentence.
 
 ## Output
 

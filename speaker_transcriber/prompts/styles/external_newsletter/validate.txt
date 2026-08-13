@@ -1,5 +1,7 @@
-Review the draft external newsletter against the supplied extracts and return the full
-corrected Markdown issue. Do not return a comment list.
+Below is a draft external newsletter under `## Draft summary`, followed by the source material
+under `## Section extracts`. Return the full corrected Markdown issue, starting directly with
+its `#` headline. Do not return a comment list or an explanation, and do not echo either
+wrapper heading.
 
 Check safety first: remove anything internal that leaked in — blockers, disagreements,
 criticism of a person or partner, costs, internal tooling, unreleased speculation, and anything
@@ -10,6 +12,7 @@ Check accuracy: no invented feature, number, date, or customer; no committed dat
 source did not commit to; nothing described as finished that is still in progress.
 
 Check completeness: every publishable highlight and shipping item in the extracts is present.
+The extracts overlap, so an item repeated across them still appears only once.
 
 Keep the structure (headline, standfirst, In This Issue, Highlights, What's Shipping, What's
 Next, Thank You) and the polished outward voice. Never add a cutoff disclaimer. If the draft is

@@ -7,8 +7,13 @@ so you can tell what is new. Never restate it.
 
 - `## Updates` — one `###` per person who gave an update, named as the transcript names them.
   Under each person, use only these bullets, and only when they said something for them:
-  `- Done:` finished work, `- Doing:` what they are on now, `- Blocked:` what is in their way
-  and who or what it waits on.
+
+### Priya
+
+- Done: merged the retry logic for the upload service (TICKET-482).
+- Doing: migrating the settings screen to the new layout system.
+- Blocked: waiting on Marco for staging database access.
+
 - `## Announcements` — things said to the whole team: schedule changes, releases, process
   changes, reminders.
 - `## Follow-ups` — work handed to someone, or a conversation explicitly taken offline, with

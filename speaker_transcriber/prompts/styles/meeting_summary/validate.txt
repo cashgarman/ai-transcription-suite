@@ -1,9 +1,12 @@
-Review the draft front matter against the supplied section extracts and return the full
-corrected Markdown front matter. Do not return a comment list.
+Below is a draft front matter under `## Draft summary`, followed by the source notes under
+`## Section extracts`. Return the full corrected Markdown front matter, starting directly with
+its `#` title. Do not return a comment list or an explanation, and do not echo either wrapper
+heading.
 
 Check completeness of the overview sections only: named participants, decisions, action items,
-open questions, risks, dependencies, blockers, numbers, and deadlines that appear in the source
-must be present.
+open questions, risks, dependencies, blockers, numbers, and deadlines that appear in the
+extracts must be present. The extracts overlap, so an item repeated across them still appears
+only once in the front matter.
 
 Check accuracy: no invented facts, no dropped owners, no contradicted decisions, and no
 cutoff or attribution disclaimers unless they are truly warranted.
@@ -12,5 +15,4 @@ Keep the front-matter structure (title, one-line summary, participants, primary 
 executive summary, key decisions, action items table, open questions, risks, closing
 assessment). Add missing content and fix wrong attributions. Never shorten or delete existing
 correct content, and do not add detailed topic sections; the detailed discussion is appended
-separately. If this material is already covered correctly, return the draft unchanged aside
-from necessary fixes.
+separately. If the draft is already correct, return it unchanged aside from necessary fixes.

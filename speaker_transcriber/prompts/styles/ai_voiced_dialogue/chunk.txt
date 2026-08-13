@@ -1,15 +1,15 @@
 Write the stretch of the two-host script that covers this segment of the recording.
 
-Cover only what is new in this segment. Any background supplied from earlier segments is there
-so you know what the hosts have already said. Never recap it, restate it, or reintroduce the
-show.
+Cover only what is new in this segment. Any background supplied from earlier segments shows
+what the hosts have already said. Never recap it, restate it, or reintroduce the show.
 
 ## Rules
 
 - Every line is `**Host A:** ...` or `**Host B:** ...`, alternating, one paragraph per line.
 - If this is the opening of the show, Host A opens cold: what the recording was and who was in
-  it, in two sentences at most. If background was supplied, skip the introduction entirely and
-  pick up mid-conversation.
+  it, in two sentences at most. If background was supplied, skip the introduction entirely:
+  the background ends with the last lines already spoken, so pick up mid-conversation with
+  whichever host naturally follows.
 - Work through the substance of the segment in the order it came up. Keep the decisions, the
   numbers, the names, the disagreements, and the reasons people gave. Attribute them: "Cash
   argued that…", "Andrew's worry was…".
@@ -19,6 +19,7 @@ show.
   about what the team meant or what happens next.
 - Do not summarize the segment down to a few lines. If the segment covered six topics, the
   script covers six topics.
+- Say figures the way a voice would: "four million dollars", not "$4M".
 
 ## Output
 

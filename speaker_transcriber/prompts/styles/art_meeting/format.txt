@@ -1,9 +1,10 @@
 Rewrite these notes as a single well-structured Markdown art meeting document.
 Keep every fact, name, number, reference, critique, decision, action, and discussion point.
-This is a formatting pass, not a summarization pass: never shorten, merge, or drop content. Do
-not invent content. Use this exact structure:
+This is a formatting pass, not a summarization pass: never shorten, merge, or drop content, and
+never invent content. When the source repeats the same point, keep it once. Use this exact
+structure:
 
-1. `#` title
+1. `#` title — the meeting's actual subject, not "Art Meeting Notes"
 2. Italic one-line meeting summary
 3. **Participants:** named people from the notes (display names when available)
 4. **Primary topics:** comma-separated topics
@@ -22,6 +23,7 @@ not invent content. Use this exact structure:
 15. Detailed `##` and `###` discussion sections for the remaining notes, keeping their order and
     all of their detail
 
-Output Markdown only. Make the action-item table a real pipe table, even if the source used
-tabs, bullets, or prose. If a required section has no source material, keep the heading and a
-single honest line such as "None recorded."
+Output Markdown only, starting directly with the `#` title: no preamble and no code fence.
+Make the action-item table a real pipe table, even if the source used tabs, bullets, or prose.
+If a required section has no source material, keep the heading and a single honest line such as
+"None recorded."

@@ -20,9 +20,14 @@ Use only these `##` headings, and omit any heading this segment has nothing for:
 
 ## Content
 
-Compact bullets, one point each, written in outward-facing language. Do not attribute points to
-individual speakers; say what is true, not who said it. Preserve numbers and dates exactly.
-Never soften a "maybe" into a "will".
+Compact bullets, one point each, written in outward-facing language. The shape:
+
+## Shipped or changed
+
+- The first two levels now have their full sound pass, so exploration feels far more alive.
+
+Do not attribute points to individual speakers; say what is true, not who said it. Preserve
+numbers and dates exactly. Never soften a "maybe" into a "will".
 
 ## Output
 

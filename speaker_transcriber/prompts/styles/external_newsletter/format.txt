@@ -6,8 +6,9 @@ Use this structure: `#` headline, an italic one-line standfirst, then `## In Thi
 
 Keep every publishable fact, feature, number, and date from the source. This is a formatting
 pass, not a summarization pass: do not drop publishable content and do not invent content.
+When the source repeats the same point, keep it once.
 
 Leave the inside out: no internal debate, blockers, criticism, costs, tooling detail, or
 individual names attached to opinions. Do not promise a date the source did not commit to.
 
-Output Markdown only, starting with the `#` headline.
+Output Markdown only, starting directly with the `#` headline: no preamble and no code fence.

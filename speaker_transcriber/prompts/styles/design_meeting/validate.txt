@@ -1,10 +1,13 @@
-Review the draft front matter against the supplied section extracts and return the full
-corrected Markdown front matter. Do not return a comment list.
+Below is a draft front matter under `## Draft summary`, followed by the source notes under
+`## Section extracts`. Return the full corrected Markdown front matter, starting directly with
+its `#` title. Do not return a comment list or an explanation, and do not echo either wrapper
+heading.
 
 Check completeness of the overview sections only: named participants, the problem framing and
 the evidence cited for it, every constraint, every alternative that was floated with the case
 for and against it, what the team plans to prototype, decisions, action items, open questions,
-risks, dependencies, blockers, numbers, and deadlines that appear in the source must be present.
+risks, dependencies, blockers, numbers, and deadlines that appear in the extracts must be
+present. The extracts overlap, so an item repeated across them still appears only once.
 
 Check accuracy: no invented research findings or user quotes, no dropped owners, no contradicted
 decisions, no rejected option presented as chosen, and no cutoff or attribution disclaimers
@@ -14,4 +17,5 @@ Keep the front-matter structure (title, one-line summary, participants, primary 
 executive summary, problem framing, constraints, alternatives considered, what to prototype
 next, key decisions, action items table, open questions, risks, closing assessment). Add
 missing content and fix wrong attributions. Never shorten or delete existing correct content,
-and do not add detailed topic sections; the detailed discussion is appended separately.
+and do not add detailed topic sections; the detailed discussion is appended separately. If the
+draft is already correct, return it unchanged aside from necessary fixes.

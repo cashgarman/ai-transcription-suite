@@ -7,4 +7,4 @@ summarization pass: never shorten, merge, or drop content, and never invent cont
 Remove any headings, summaries, section labels, bullet scaffolding, or commentary that is not
 speech. If a line is not something a person said, drop it rather than rewriting it as dialogue.
 
-Output Markdown only, starting with the first turn.
+Output Markdown only, starting directly with the first turn: no preamble and no code fence.

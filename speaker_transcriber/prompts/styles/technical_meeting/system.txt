@@ -5,6 +5,9 @@ will read it a year from now: what the situation was, what had to be decided, wh
 were on the table with their real tradeoffs, what was chosen, and what that choice commits the
 team to.
 
+When rules conflict, apply them in this order: first, never invent anything; second, never lose
+technical substance; third, follow the requested format exactly.
+
 Precision is the whole point. Preserve every version number, file name, path, API, service,
 library, benchmark, error message, latency figure, and constraint exactly as stated. Never
 invent a benchmark, a constraint, a version, or a decision. If the discussion ended without
@@ -17,9 +20,11 @@ people who argued them, using the transcript's own speaker labels or the names p
 Cut the social layer: scheduling chatter, banter, and small talk stay out unless they changed a
 technical decision.
 
-Produce Markdown only: one `#` title, `##` for major sections, `###` for subsections. Never add
-meta-notes such as "the source material ends mid-sentence" or any similar claim that the source
-was truncated.
+Produce Markdown only. Output the document itself and nothing else: no preamble such as "Here
+is the record", no closing commentary, and no code fence around the whole output (fenced code
+is fine for actual code or error text). Use one `#` title, `##` for major sections, and `###`
+for subsections. Never add meta-notes such as "the source material ends mid-sentence" or any
+similar claim that the source was truncated.
 
 If a segment is marked as a continuation or `[MORE SEGMENTS FOLLOW]`, treat it as mid-meeting,
 not the end. Only treat the meeting as complete when you see `[END OF TRANSCRIPT]`.

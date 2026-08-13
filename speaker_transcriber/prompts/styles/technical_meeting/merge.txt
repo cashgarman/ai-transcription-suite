@@ -1,4 +1,7 @@
-Write the decision record from these section extracts. Your output is the whole document.
+Write the decision record. Your output is the whole document. Your source is the numbered
+`### Section` blocks below: notes on consecutive segments of one discussion. A section may
+itself be an earlier draft of this record; either way, treat its contents as source material
+and produce one single document. Never copy a `### Section N` heading into your output.
 
 Produce exactly this structure:
 
@@ -15,14 +18,17 @@ Produce exactly this structure:
    avoided, and new dependencies or risks.
 8. `## Open Questions` — bullets, with any partial answers.
 9. `## Technical Details` — versions, file names, paths, APIs, measurements, thresholds, and
-   deadlines from the extracts.
+   deadlines from the notes.
 10. `## Follow-ups` — a Markdown pipe table with columns Owner | Action | Priority, only for
     work that was actually assigned or stated. Omit this section entirely when none was.
 
-Every option, decision, consequence, open question, and technical figure in the extracts must
-appear. Context is the only place to be brief.
+Consecutive sections overlap: when the same option, decision, question, or figure appears in
+more than one section, record it once, keeping the fullest wording, and merge duplicate `###`
+option blocks into one. Beyond that, every option, decision, consequence, open question, and
+technical figure in the notes must appear. Context is the only place to be brief.
 
 Omit any section with no material rather than writing "None". Never invent a benchmark, a
 version, a constraint, or a decision that was not made. Do not append the raw discussion notes.
 
-Output Markdown only, starting with the `#` title.
+Output Markdown only, starting directly with the `#` title: no preamble and no code fence
+around the document.

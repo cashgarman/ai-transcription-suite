@@ -1,9 +1,12 @@
-Review the draft decision record against the supplied extracts and return the full corrected
-Markdown document. Do not return a comment list.
+Below is a draft decision record under `## Draft summary`, followed by the source notes under
+`## Section extracts`. Return the full corrected Markdown document, starting directly with its
+`#` title. Do not return a comment list or an explanation, and do not echo either wrapper
+heading.
 
 Check completeness: every option that was floated, every decision, every consequence, every
 open question, and every version, file name, measurement, threshold, and deadline in the
-extracts must be present.
+extracts must be present. The extracts overlap, so an item repeated across them still appears
+only once.
 
 Check accuracy: no invented benchmarks, versions, or constraints; no decision recorded that the
 room did not actually make; rejected options still carry the reason they were rejected;

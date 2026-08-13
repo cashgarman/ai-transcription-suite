@@ -20,10 +20,15 @@ Use only these `##` headings, in this order, and omit any heading this segment h
 
 ## Content
 
-Write compact bullets, one point each. Attribute a point inline when who said it matters, for
-example `Cash: the current pipeline takes three days per asset`. Preserve every number, name,
-date, and product term exactly. Keep competing views: if two people disagreed about the market,
-both bullets stay.
+Write compact bullets, one point each. Attribute a point inline when who said it matters. The
+shape:
+
+## Problem
+
+- Cash: the current pipeline takes three days per asset, so the team ships two weeks late.
+
+Preserve every number, name, date, and product term exactly. Keep competing views: if two
+people disagreed about the market, both bullets stay.
 
 ## Output
 

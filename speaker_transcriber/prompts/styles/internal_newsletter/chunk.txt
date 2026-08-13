@@ -18,10 +18,15 @@ Use only these `##` headings, and omit any heading this segment has nothing for:
 
 ## Content
 
-Compact bullets, one point each. Attribute inline by the name or label the transcript uses, for
-example `Andrew: the sound pass is done for the first two levels`. Keep every name, number,
-date, and deadline. Keep disagreements as disagreements. Drop pure logistics chatter unless it
-changes what someone must do.
+Compact bullets, one point each, attributed inline by the name or label the transcript uses.
+The shape:
+
+## What happened
+
+- Andrew: the sound pass is done for the first two levels; the boss fight still needs mixing.
+
+Keep every name, number, date, and deadline. Keep disagreements as disagreements. Drop pure
+logistics chatter unless it changes what someone must do.
 
 ## Output
 

@@ -6,13 +6,17 @@ so you can tell what is new. Never restate it, summarize it, or recap it.
 
 ## Structure
 
-- Use `##` headings named for the actual topics discussed, in the order they came up, for
-  example `## Onboarding Drop-Off`. Never use a generic heading such as Discussion, Notes,
-  Meeting Notes, Summary, Overview, Recap, Segment, or Continuation.
-- Under each topic write compact Markdown bullets, not flowing prose. One bullet per point.
-- Attribute each point to the speaker who made it, inline, by the name or label the transcript
-  uses, for example `Cash: people abandon the flow at the permissions screen`. Do not write a
-  participants list.
+- Use `##` headings named for the actual topics discussed, in the order they came up. Never
+  use a generic heading such as Discussion, Notes, Meeting Notes, Summary, Overview, Recap,
+  Segment, or Continuation.
+- Under each topic write compact Markdown bullets, one point per bullet, attributed inline to
+  the speaker by the name or label the transcript uses. Do not write a participants list.
+  The shape:
+
+## Onboarding Drop-Off
+
+- Cash: people abandon the flow at the permissions screen; support tickets back this up.
+
 - After the topics, add these headings only when this segment has material for them:
   `## Problem framing` (what problem, for whom, and why it matters), `## Evidence` (research,
   data, support tickets, playtests, or anecdotes cited), `## Constraints` (technical, platform,

@@ -6,13 +6,17 @@ so you can tell what is new. Never restate it, summarize it, or recap it.
 
 ## Structure
 
-- Use `##` headings named for the actual topics discussed, in the order they came up, for
-  example `## Forest Biome Colour Keys`. Never use a generic heading such as Discussion, Notes,
-  Meeting Notes, Summary, Overview, Recap, Segment, or Continuation.
-- Under each topic write compact Markdown bullets, not flowing prose. One bullet per point.
-- Attribute each point to the speaker who made it, inline, by the name or label the transcript
-  uses, for example `Ronny: the silhouette reads too soft at distance`. Do not write a
-  participants list.
+- Use `##` headings named for the actual topics discussed, in the order they came up. Never
+  use a generic heading such as Discussion, Notes, Meeting Notes, Summary, Overview, Recap,
+  Segment, or Continuation.
+- Under each topic write compact Markdown bullets, one point per bullet, attributed inline to
+  the speaker by the name or label the transcript uses. Do not write a participants list.
+  The shape:
+
+## Forest Biome Colour Keys
+
+- Ronny: the silhouette reads too soft at distance; push the shoulder line harder.
+
 - After the topics, add these headings only when this segment has material for them:
   `## Visual direction` (mood, palette, lighting, shape language, style targets, and the exact
   adjectives used), `## References` (artists, films, games, images, and links named),

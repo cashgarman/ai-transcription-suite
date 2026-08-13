@@ -11,7 +11,12 @@ Use only these `##` headings, and omit any heading this segment has nothing for:
 - `## Context` — the system, component, or situation under discussion, and its current state.
 - `## Problem` — what is broken, blocked, or being chosen between, stated concretely.
 - `## Options` — one `###` per option that was floated, however briefly. Under each, bullets for
-  how it would work, its cost, its risk, who argued for or against it, and why.
+  how it would work, its cost, its risk, who argued for or against it, and why. For example:
+
+### Precompile shaders in CI
+
+- Cash: moves the failure to build time, where it is visible; adds roughly four minutes per build.
+
 - `## Decisions` — what was actually settled, and the reason given.
 - `## Consequences` — what the choice commits the team to: migrations, rewrites, dependencies,
   performance implications, work that becomes unnecessary.
@@ -21,10 +26,10 @@ Use only these `##` headings, and omit any heading this segment has nothing for:
 
 ## Content
 
-Compact bullets, one point each. Attribute technical positions inline, for example
-`Cash: the packaged build fails on the shader step`. Keep the numbers, the exact identifiers,
-and the reasoning people gave. Keep disagreements as separate bullets rather than merging them
-into a consensus that did not happen. Drop scheduling talk and banter.
+Compact bullets, one point each. Attribute technical positions inline by the name or label the
+transcript uses. Keep the numbers, the exact identifiers, and the reasoning people gave. Keep
+disagreements as separate bullets rather than merging them into a consensus that did not
+happen. Drop scheduling talk and banter.
 
 ## Output
 

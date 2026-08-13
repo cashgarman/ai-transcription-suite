@@ -1,4 +1,7 @@
-Build the pitch deck outline from these section extracts. Your output is the whole document.
+Build the pitch deck outline. Your output is the whole document. Your source is the numbered
+`### Section` blocks below: material pulled from consecutive segments of one recording. A
+section may itself be an earlier draft of the outline; either way, treat its contents as source
+material and produce one single deck. Never copy a `### Section N` heading into your output.
 
 Produce exactly this structure:
 
@@ -14,14 +17,16 @@ Produce exactly this structure:
 10. `## Risks and Objections` — the pushback raised, with the answer given when there was one.
 
 Each slide is three to six short bullets. One idea per bullet. Lead with the point, not with
-who said it. No paragraphs, no tables, no nested sub-bullets.
+who said it. No paragraphs, no tables, no nested sub-bullets. When several sections repeat the
+same claim or number, it appears on one bullet, once.
 
-Omit any slide the extracts have nothing for. Never write a slide with a filler bullet such as
+Omit any slide the sections have nothing for. Never write a slide with a filler bullet such as
 "None discussed", and never invent a market size, a customer count, a revenue figure, a
-competitor, or a date to fill a gap. Every number on the Proof slide must appear in the
-extracts.
+competitor, or a date to fill a gap. Every number on the Proof slide must appear in the source
+sections.
 
-If the extracts hold more than one pitchable idea, pick the one with the most material and
+If the sections hold more than one pitchable idea, pick the one with the most material and
 build the deck around it; fold the rest into Insight or Risks only if they bear on it.
 
-Output Markdown only, starting with the `#` title. Do not append the discussion notes.
+Output Markdown only, starting directly with the `#` title: no preamble and no code fence. Do
+not append the discussion notes.
