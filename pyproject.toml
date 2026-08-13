@@ -28,6 +28,9 @@ dev = [
     "pytest-mock>=3.14",
     "pyinstaller>=6.11",
 ]
+pdf-html = [
+    "weasyprint>=62",
+]
 
 [project.scripts]
 speaker-transcriber = "speaker_transcriber.__main__:main"

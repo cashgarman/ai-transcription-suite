@@ -180,6 +180,18 @@ def _stylesheet() -> str:
         border: 1px solid {Theme.ACCENT};
     }}
 
+    QComboBox {{
+        combobox-popup: 0;
+    }}
+
+    QComboBox[modelInstalled="false"] {{
+        color: {Theme.TEXT_MUTED};
+    }}
+
+    QComboBox[modelInstalled="true"] {{
+        color: {Theme.TEXT};
+    }}
+
     QComboBox::drop-down {{
         border: none;
         width: 24px;
@@ -201,7 +213,21 @@ def _stylesheet() -> str:
         selection-background-color: {Theme.ACCENT};
         selection-color: {Theme.HIGHLIGHT_TEXT};
         outline: 0;
-        padding: 4px;
+    }}
+
+    QComboBox QAbstractItemView::item {{
+        min-height: 24px;
+        padding: 4px 8px;
+        color: {Theme.TEXT};
+    }}
+
+    QComboBox QAbstractItemView::item:selected {{
+        background-color: {Theme.ACCENT};
+        color: {Theme.HIGHLIGHT_TEXT};
+    }}
+
+    QComboBox QAbstractItemView::item:disabled {{
+        color: {Theme.TEXT_MUTED};
     }}
 
     QSpinBox::up-button, QSpinBox::down-button,
@@ -265,6 +291,24 @@ def _stylesheet() -> str:
         border-bottom: 1px solid {Theme.BORDER};
         padding: 8px;
         font-weight: 600;
+    }}
+
+    QHeaderView::down-arrow {{
+        width: 0;
+        height: 0;
+        border-left: 4px solid transparent;
+        border-right: 4px solid transparent;
+        border-top: 5px solid {Theme.TEXT_MUTED};
+        margin-right: 6px;
+    }}
+
+    QHeaderView::up-arrow {{
+        width: 0;
+        height: 0;
+        border-left: 4px solid transparent;
+        border-right: 4px solid transparent;
+        border-bottom: 5px solid {Theme.TEXT_MUTED};
+        margin-right: 6px;
     }}
 
     QTableWidget, QTableView {{
@@ -457,10 +501,16 @@ def _stylesheet() -> str:
         border-radius: 7px;
     }}
 
-    QLabel#jobStageLabel {{
+    QLabel#jobStageLabel,
+    QLabel#jobStagePercentLabel {{
         background: transparent;
         color: {Theme.TEXT};
         font-size: 12px;
+    }}
+
+    QLabel#jobStagePercentLabel {{
+        font-weight: 600;
+        min-width: 2.6em;
     }}
 
     QProgressBar#cpuMeter,
@@ -505,6 +555,19 @@ def _stylesheet() -> str:
     QLabel#fieldCaption {{
         color: {Theme.TEXT_MUTED};
         padding: 6px 12px;
+    }}
+
+    QLabel#modelFieldCaption {{
+        color: {Theme.TEXT_MUTED};
+        padding: 3px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+        background: transparent;
+    }}
+
+    QLabel#modelFieldCaption[active="true"] {{
+        background-color: {Theme.ACCENT_SOFT};
+        color: {Theme.TEXT};
     }}
 
     QLabel#detachedPlaceholderText {{

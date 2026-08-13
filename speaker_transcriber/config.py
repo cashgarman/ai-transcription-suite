@@ -8,12 +8,22 @@ from pathlib import Path
 from speaker_transcriber.huggingface_setup import load_project_env
 
 
-SUPPORTED_MODELS = ("medium", "distil-large-v3", "large-v3")
+RECOMMENDED_WHISPER_MODELS = ("large-v3", "distil-large-v3", "medium")
+SUPPORTED_MODELS = RECOMMENDED_WHISPER_MODELS
 SUPPORTED_COMPUTE_TYPES = ("int8_float16", "float16", "int8", "float32")
 SUPPORTED_DEVICES = ("cuda", "cpu")
 SPEAKER_MODES = ("automatic", "exact", "minmax")
+PDF_ENGINES = ("reportlab", "weasyprint")
 OLLAMA_CTX_CHOICES = (4096, 8192, 16384, 32768, 65536, 131072)
 DEFAULT_OLLAMA_NUM_CTX = 8192
+DEFAULT_ALIGNMENT_MODEL = "auto"
+DEFAULT_DIARIZATION_MODEL = "pyannote/speaker-diarization-3.1"
+
+
+def _string_list(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item).strip() for item in value if str(item).strip()]
 
 
 def snap_ollama_num_ctx(value: int) -> int:
@@ -64,6 +74,12 @@ class AppSettings:
     inherit_speaker_threshold_seconds: float = 0.3
     alignment_device: str = "cuda"
     diarization_device: str = "cuda"
+    alignment_model: str = DEFAULT_ALIGNMENT_MODEL
+    diarization_model: str = DEFAULT_DIARIZATION_MODEL
+    extra_whisper_models: list[str] = field(default_factory=list)
+    extra_alignment_models: list[str] = field(default_factory=list)
+    extra_diarization_models: list[str] = field(default_factory=list)
+    pdf_engine: str = "reportlab"
     window_width: int = 1200
     window_height: int = 820
     use_cached_transcript: bool = True
@@ -72,8 +88,8 @@ class AppSettings:
     recent_files: list[str] = field(default_factory=list)
 
     def validate(self) -> None:
-        if self.model not in SUPPORTED_MODELS:
-            raise ValueError(f"Unsupported model: {self.model}")
+        if not str(self.model or "").strip():
+            raise ValueError("Transcription model is required.")
         if self.compute_type not in SUPPORTED_COMPUTE_TYPES:
             raise ValueError(f"Unsupported compute type: {self.compute_type}")
         if self.batch_size < 1:
@@ -105,6 +121,16 @@ class AppSettings:
             self.ollama_num_ctx = snap_ollama_num_ctx(ctx)
         else:
             self.ollama_num_ctx = ctx
+        engine = str(self.pdf_engine or "reportlab").strip().lower()
+        self.pdf_engine = engine if engine in PDF_ENGINES else "reportlab"
+        self.alignment_model = str(self.alignment_model or DEFAULT_ALIGNMENT_MODEL).strip() or DEFAULT_ALIGNMENT_MODEL
+        self.diarization_model = (
+            str(self.diarization_model or DEFAULT_DIARIZATION_MODEL).strip()
+            or DEFAULT_DIARIZATION_MODEL
+        )
+        self.extra_whisper_models = _string_list(self.extra_whisper_models)
+        self.extra_alignment_models = _string_list(self.extra_alignment_models)
+        self.extra_diarization_models = _string_list(self.extra_diarization_models)
 
 
 class SettingsStore:
@@ -134,6 +160,13 @@ class SettingsStore:
                     filtered["ollama_num_ctx"] = int(filtered["ollama_num_ctx"])
                 except (TypeError, ValueError):
                     filtered.pop("ollama_num_ctx")
+            for list_key in (
+                "extra_whisper_models",
+                "extra_alignment_models",
+                "extra_diarization_models",
+            ):
+                if list_key in filtered:
+                    filtered[list_key] = _string_list(filtered[list_key])
             if "speaker_mode" not in filtered or filtered.get("speaker_mode") not in SPEAKER_MODES:
                 filtered["speaker_mode"] = infer_speaker_mode(
                     None,

@@ -27,8 +27,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("input", type=Path)
     parser.add_argument(
         "--model",
-        choices=("medium", "distil-large-v3", "large-v3"),
         default="distil-large-v3",
+        help="faster-whisper model id (default: distil-large-v3)",
     )
     parser.add_argument("--device", choices=("cuda", "cpu"), default="cuda")
     parser.add_argument("--compute-type", default="int8_float16")
@@ -39,6 +39,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-speakers", type=int)
     parser.add_argument("--alignment-device", choices=("cuda", "cpu"), default="cuda")
     parser.add_argument("--diarization-device", choices=("cuda", "cpu"), default="cuda")
+    parser.add_argument("--alignment-model", default="auto")
+    parser.add_argument(
+        "--diarization-model",
+        default="pyannote/speaker-diarization-3.1",
+    )
     parser.add_argument("--output", type=Path, default=Path("output"))
     parser.add_argument(
         "--formats",
@@ -80,6 +85,8 @@ def main(argv: list[str] | None = None) -> int:
         max_speakers=arguments.max_speakers,
         alignment_device=arguments.alignment_device,
         diarization_device=arguments.diarization_device,
+        alignment_model=arguments.alignment_model,
+        diarization_model=arguments.diarization_model,
         hf_token=settings_store.get_hf_token(arguments.hf_token),
     )
     cancel_event = threading.Event()

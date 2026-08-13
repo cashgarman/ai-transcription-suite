@@ -86,14 +86,16 @@ class TranscriptionProcessor:
                 return
             base, weight = STAGES[stage]
             used, total = self.model_manager.get_vram_info()
+            clamped = max(0.0, min(fraction, 1.0))
             on_progress(
                 ProgressUpdate(
                     stage=stage,
-                    progress=min(base + weight * max(0.0, min(fraction, 1.0)), 1.0),
+                    progress=min(base + weight * clamped, 1.0),
                     message=message,
                     elapsed_seconds=time.monotonic() - started,
                     vram_used_mb=used,
                     vram_total_mb=total,
+                    stage_fraction=clamped,
                 )
             )
 
@@ -125,7 +127,7 @@ class TranscriptionProcessor:
                     0.0,
                     "Caching pyannote diarization models",
                 )
-                prefetch_diarization_models(options.hf_token)
+                prefetch_diarization_models(options.hf_token, options.diarization_model)
             emit(
                 "loading_media",
                 0.0,
@@ -171,6 +173,9 @@ class TranscriptionProcessor:
                 aligned_segments = raw_segments
                 try:
                     def alignment_operation(device: str) -> list[RawSegment]:
+                        align_model = options.alignment_model
+                        if str(align_model or "").strip().lower() in {"", "auto"}:
+                            align_model = None
                         return self.aligner.align(
                             audio_path,
                             raw_segments,
@@ -182,6 +187,7 @@ class TranscriptionProcessor:
                                 value,
                                 "Aligning word timestamps",
                             ),
+                            model_name=align_model,
                         )
 
                     aligned_segments, alignment_device = (

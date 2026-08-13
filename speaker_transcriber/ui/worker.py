@@ -77,6 +77,68 @@ class ProcessingWorker(QThread):
         self.progress.emit(update)
 
 
+class CatalogListWorker(QThread):
+    completed = Signal(list)
+    failed = Signal(str)
+
+    def __init__(self, provider, query: str = "", family: str | None = None, parent=None) -> None:
+        super().__init__(parent)
+        self.provider = provider
+        self.query = query
+        self.family = family
+
+    def run(self) -> None:
+        try:
+            from speaker_transcriber.huggingface_setup import configure_huggingface_client
+
+            configure_huggingface_client()
+            if self.family:
+                entries = self.provider.list_variants(self.family)
+            else:
+                entries = self.provider.list_models(self.query)
+            self.completed.emit(list(entries or []))
+        except Exception as exc:
+            LOGGER.exception("Failed to list catalog models")
+            self.failed.emit(str(exc))
+
+
+class CatalogDownloadWorker(QThread):
+    progress = Signal(object)
+    model_finished = Signal(str)
+    failed = Signal(str)
+    completed = Signal()
+
+    def __init__(self, provider, names: list[str], parent=None) -> None:
+        super().__init__(parent)
+        self.provider = provider
+        self.names = list(names)
+        self.cancel_event = threading.Event()
+
+    def request_cancel(self) -> None:
+        self.cancel_event.set()
+
+    def run(self) -> None:
+        try:
+            from speaker_transcriber.huggingface_setup import configure_huggingface_client
+
+            configure_huggingface_client()
+            for name in self.names:
+                if self.cancel_event.is_set():
+                    break
+                self.provider.download(name, self._emit_progress, self.cancel_event)
+                if not self.cancel_event.is_set():
+                    self.model_finished.emit(name)
+            self.completed.emit()
+        except InterruptedError as exc:
+            self.failed.emit(str(exc))
+        except Exception as exc:
+            LOGGER.exception("Catalog download failed")
+            self.failed.emit(str(exc))
+
+    def _emit_progress(self, update) -> None:
+        self.progress.emit(update)
+
+
 class OllamaModelListWorker(QThread):
     completed = Signal(list)
     failed = Signal(str)
@@ -155,6 +217,7 @@ class PdfExportWorker(QThread):
         existing_markdown: str = "",
         model_name: str = "",
         num_ctx: int = DEFAULT_OLLAMA_NUM_CTX,
+        pdf_engine: str = "reportlab",
         parent=None,
     ) -> None:
         super().__init__(parent)
@@ -163,6 +226,7 @@ class PdfExportWorker(QThread):
         self.existing_markdown = existing_markdown
         self.model_name = model_name
         self.num_ctx = num_ctx
+        self.pdf_engine = pdf_engine
 
     def run(self) -> None:
         try:
@@ -244,7 +308,7 @@ class PdfExportWorker(QThread):
 
             self.summary_ready.emit(markdown)
             emit_progress(self.FORMAT_END, "Writing PDF…")
-            export_meeting_pdf(document, Path(self.destination))
+            export_meeting_pdf(document, Path(self.destination), engine=self.pdf_engine)
             emit_progress(1.0, "PDF export complete")
             self.completed.emit(self.destination)
         except Exception as exc:

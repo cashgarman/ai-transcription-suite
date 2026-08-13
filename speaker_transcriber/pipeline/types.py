@@ -89,6 +89,7 @@ class ProgressUpdate:
     elapsed_seconds: float
     vram_used_mb: int = 0
     vram_total_mb: int = 0
+    stage_fraction: float = 0.0
 
 
 @dataclass
@@ -103,6 +104,8 @@ class ProcessingOptions:
     max_speakers: int | None = None
     alignment_device: str = "cuda"
     diarization_device: str = "cuda"
+    alignment_model: str = "auto"
+    diarization_model: str = "pyannote/speaker-diarization-3.1"
     merge_gap_seconds: float = 0.5
     max_block_duration_seconds: float = 30.0
     inherit_speaker_threshold_seconds: float = 0.3

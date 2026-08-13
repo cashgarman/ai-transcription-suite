@@ -180,3 +180,54 @@ def test_export_meeting_pdf_writes_pdf_header(tmp_path) -> None:
     data = path.read_bytes()
     assert data.startswith(b"%PDF")
     assert len(data) > 500
+
+
+def test_export_meeting_pdf_dispatches_weasyprint(monkeypatch, tmp_path) -> None:
+    called: dict[str, object] = {}
+
+    def fake_export(document, path) -> None:
+        called["document"] = document
+        called["path"] = path
+
+    monkeypatch.setattr(
+        "speaker_transcriber.export.weasyprint_exporter.export_weasyprint_pdf",
+        fake_export,
+    )
+    document = parse_meeting_markdown(COMPLETE_MARKDOWN)
+    path = tmp_path / "meeting.pdf"
+    export_meeting_pdf(document, path, engine="weasyprint")
+    assert called["path"] == path
+    assert called["document"] is document
+    assert not path.exists()
+
+
+def test_missing_reportlab_explains_install(monkeypatch, tmp_path) -> None:
+    import speaker_transcriber.export.pdf_exporter as pdf_exporter
+
+    monkeypatch.setattr(pdf_exporter, "_REPORTLAB_READY", False)
+
+    real_import = __import__
+
+    def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "reportlab" or name.startswith("reportlab."):
+            raise ImportError("No module named 'reportlab'")
+        return real_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr("builtins.__import__", fake_import)
+    document = parse_meeting_markdown(COMPLETE_MARKDOWN)
+    try:
+        export_meeting_pdf(document, tmp_path / "meeting.pdf", engine="reportlab")
+    except RuntimeError as exc:
+        assert "pip install reportlab" in str(exc)
+        assert "WeasyPrint" in str(exc)
+    else:
+        raise AssertionError("Expected RuntimeError")
+
+
+def test_weasyprint_html_includes_title() -> None:
+    from speaker_transcriber.export.weasyprint_exporter import meeting_document_html
+
+    document = parse_meeting_markdown(COMPLETE_MARKDOWN)
+    html = meeting_document_html(document)
+    assert "<h1>Sound Project Integration and Game Development Planning</h1>" in html
+    assert "<table>" in html

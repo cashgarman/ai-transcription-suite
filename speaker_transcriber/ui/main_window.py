@@ -5,7 +5,7 @@ import time
 from pathlib import Path
 from queue import Empty, Queue
 
-from PySide6.QtCore import QTimer, Qt
+from PySide6.QtCore import QRectF, QTimer, Qt
 from PySide6.QtGui import (
     QAction,
     QBrush,
@@ -35,6 +35,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QListView,
     QMainWindow,
     QMenu,
     QMessageBox,
@@ -63,7 +64,10 @@ from speaker_transcriber.cache import SpeakerNameStore, TranscriptCache
 from speaker_transcriber.config import (
     AppSettings,
     SettingsStore,
+    DEFAULT_DIARIZATION_MODEL,
     OLLAMA_CTX_CHOICES,
+    PDF_ENGINES,
+    RECOMMENDED_WHISPER_MODELS,
     SPEAKER_MODES,
     format_ctx_label,
     snap_ollama_num_ctx,
@@ -76,17 +80,36 @@ from speaker_transcriber.export.common import (
 )
 from speaker_transcriber.export.meeting_document import is_usable_summary_markdown
 from speaker_transcriber.export.text_exporter import render_text
+from speaker_transcriber.export.pdf_exporter import reportlab_available
+from speaker_transcriber.export.weasyprint_exporter import weasyprint_available
 from speaker_transcriber.gpu_stats import query_gpu_stats
 from speaker_transcriber.host_stats import query_host_stats
+from speaker_transcriber.models.model_catalog import (
+    ALIGNMENT_AUTO,
+    PINNED_OLLAMA_MODELS,
+    RECOMMENDED_ALIGNMENT_MODEL,
+    whisper_display_name,
+    whisper_repo_id,
+    whisper_runtime_id,
+    hf_repo_cached,
+)
 from speaker_transcriber.models.summarization import RequirementsSummarizer
 from speaker_transcriber.pipeline.types import ProcessingOptions, ProgressUpdate, TranscriptResult
+from speaker_transcriber.ui.progress_tooltips import (
+    KEEP_COLUMN_KEYS,
+    progress_column,
+    progress_key,
+    tooltip_for_progress,
+)
+from speaker_transcriber.ui.theme import Theme
+from speaker_transcriber.ui.add_models_dialog import AddModelsDialog
 from speaker_transcriber.ui.branding import summit_icon
 from speaker_transcriber.ui.collapsible_section import CollapsibleSection
 from speaker_transcriber.ui.detachable_tab_widget import DetachableTabWidget
 from speaker_transcriber.ui.duration_probe_worker import MediaDurationProbeWorker
 from speaker_transcriber.ui.input_timeline import InputTimelineWidget
+from speaker_transcriber.ui.model_combo import ComboModelItem, ModelComboBox
 from speaker_transcriber.ui.notification import NotificationBanner
-from speaker_transcriber.ui.ollama_model_combo import OllamaModelComboBox
 from speaker_transcriber.ui.settings_dialog import SettingsDialog
 from speaker_transcriber.ui.text_search import SearchableTextPanel
 from speaker_transcriber.ui.transcript_panel import TranscriptPanel
@@ -112,6 +135,19 @@ class ElidedLabel(QLabel):
 
     def paintEvent(self, _event: QPaintEvent) -> None:
         painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        active = str(self.property("active") or "false") == "true"
+        if active:
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor(Theme.ACCENT_SOFT))
+            painter.drawRoundedRect(
+                QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5),
+                4.0,
+                4.0,
+            )
+            painter.setPen(QColor(Theme.TEXT))
+        else:
+            painter.setPen(self.palette().color(self.foregroundRole()))
         metrics = QFontMetrics(self.font())
         rect = self.contentsRect()
         elided = metrics.elidedText(
@@ -119,7 +155,6 @@ class ElidedLabel(QLabel):
             Qt.TextElideMode.ElideRight,
             rect.width(),
         )
-        painter.setPen(self.palette().color(self.foregroundRole()))
         painter.drawText(rect, int(self.alignment()), elided)
         painter.end()
 
@@ -168,6 +203,8 @@ class MainWindow(QMainWindow):
         self.summary_worker: SummarizationWorker | None = None
         self.pdf_export_worker: PdfExportWorker | None = None
         self.ollama_model_worker: OllamaModelListWorker | None = None
+        self._installed_ollama_names: set[str] = set()
+        self._known_hf_repos: set[str] = set()
         self.result: TranscriptResult | None = None
         self.summary_markdown = ""
         self._pdf_streaming_summary = False
@@ -329,12 +366,33 @@ class MainWindow(QMainWindow):
         timeline_row.addLayout(file_buttons)
         setup_layout.addLayout(timeline_row)
 
-        self.model_combo = QComboBox()
-        self.model_combo.addItem("Medium", "medium")
-        self.model_combo.addItem("Distil Large V3", "distil-large-v3")
-        self.model_combo.addItem("Large V3", "large-v3")
-        model_index = self.model_combo.findData(self.settings.model)
-        self.model_combo.setCurrentIndex(max(model_index, 0))
+        self.whisper_combo = ModelComboBox()
+        self.whisper_combo.setToolTip(
+            "Whisper / faster-whisper model used to transcribe speech. "
+            "Recommended: openai/whisper-large-v3 (runs as large-v3)."
+        )
+        self.whisper_combo.add_models_requested.connect(
+            lambda: self._open_add_models("whisper")
+        )
+        self.whisper_combo.currentIndexChanged.connect(self._persist_whisper_model)
+        self.alignment_combo = ModelComboBox()
+        self.alignment_combo.setToolTip(
+            "wav2vec2 model used to align word timestamps. "
+            "Recommended English model: jonatasgrosman/wav2vec2-large-xlsr-53-english."
+        )
+        self.alignment_combo.add_models_requested.connect(
+            lambda: self._open_add_models("alignment")
+        )
+        self.alignment_combo.currentIndexChanged.connect(self._persist_alignment_model)
+        self.diarization_combo = ModelComboBox()
+        self.diarization_combo.setToolTip(
+            "pyannote speaker-diarization pipeline. "
+            "Recommended: pyannote/speaker-diarization-3.1 (gated Hugging Face model)."
+        )
+        self.diarization_combo.add_models_requested.connect(
+            lambda: self._open_add_models("diarization")
+        )
+        self.diarization_combo.currentIndexChanged.connect(self._persist_diarization_model)
         self.language_combo = QComboBox()
         self.language_combo.setEditable(True)
         self.language_combo.addItems(
@@ -365,8 +423,56 @@ class MainWindow(QMainWindow):
         self.min_speakers.valueChanged.connect(self._persist_speaker_settings)
         self.max_speakers.valueChanged.connect(self._persist_speaker_settings)
 
-        self.ollama_model_combo = OllamaModelComboBox()
+        self.ollama_model_combo = ModelComboBox()
+        self.ollama_model_combo.setToolTip(
+            "Ollama model used to write meeting notes. "
+            "Recommended: llama3.2 (general/reasoning) or qwen2.5 (long text)."
+        )
         self.ollama_model_combo.currentIndexChanged.connect(self._on_ollama_model_changed)
+        self.ollama_model_combo.add_models_requested.connect(
+            lambda: self._open_add_models("ollama")
+        )
+        self.pdf_engine_combo = QComboBox()
+        pdf_view = QListView()
+        pdf_view.setMinimumWidth(280)
+        self.pdf_engine_combo.setView(pdf_view)
+        self.pdf_engine_combo.addItem("ReportLab (programmatic PDF)", "reportlab")
+        if not reportlab_available():
+            self.pdf_engine_combo.setItemData(
+                0,
+                "ReportLab is not installed. pip install reportlab "
+                "or switch to WeasyPrint if that renderer is available.",
+                Qt.ItemDataRole.ToolTipRole,
+            )
+        weasy_index = self.pdf_engine_combo.count()
+        self.pdf_engine_combo.addItem("WeasyPrint (HTML/CSS to PDF)", "weasyprint")
+        if not weasyprint_available():
+            self.pdf_engine_combo.setItemData(
+                weasy_index,
+                "WeasyPrint is not installed. pip install weasyprint "
+                "(and GTK/Pango/Cairo on Windows). You can still select it; "
+                "PDF export will explain if the renderer is missing.",
+                Qt.ItemDataRole.ToolTipRole,
+            )
+        pdf_index = self.pdf_engine_combo.findData(self.settings.pdf_engine)
+        if pdf_index < 0:
+            pdf_index = self.pdf_engine_combo.findData("reportlab")
+        self.pdf_engine_combo.setCurrentIndex(max(pdf_index, 0))
+        self.pdf_engine_combo.currentIndexChanged.connect(self._persist_pdf_engine)
+        reportlab_hint = "installed" if reportlab_available() else "not installed"
+        weasy_hint = "installed" if weasyprint_available() else "not installed"
+        self.pdf_engine_combo.setToolTip(
+            "PDF renderer for formatted meeting notes. "
+            f"ReportLab is {reportlab_hint}; WeasyPrint is {weasy_hint}."
+        )
+        self.pdf_engine_combo.setMinimumWidth(120)
+        self.pdf_engine_combo.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+        )
+        self.pdf_engine_combo.setMinimumContentsLength(8)
+        self.pdf_engine_combo.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        )
         self.refresh_ollama_button = QPushButton("Refresh")
         self.refresh_ollama_button.clicked.connect(self._refresh_ollama_models)
         self._ctx_choices = list(OLLAMA_CTX_CHOICES)
@@ -376,7 +482,7 @@ class MainWindow(QMainWindow):
         self.ollama_ctx_slider.setTickInterval(1)
         self.ollama_ctx_slider.setSingleStep(1)
         self.ollama_ctx_slider.setPageStep(1)
-        self.ollama_ctx_slider.setFixedWidth(128)
+        self.ollama_ctx_slider.setFixedWidth(96)
         self.ollama_ctx_slider.setToolTip(
             "Ollama context length. Larger values use more VRAM; "
             "too small can truncate the prompt."
@@ -386,23 +492,53 @@ class MainWindow(QMainWindow):
         self._set_ctx_slider_value(self.settings.ollama_num_ctx)
         self.ollama_ctx_slider.valueChanged.connect(self._on_ollama_ctx_changed)
 
-        options_row = QHBoxLayout()
-        options_row.setSpacing(10)
-        options_row.addWidget(self._inline_field("Model", self.model_combo))
-        options_row.addWidget(self._inline_field("Language", self.language_combo))
-        options_row.addWidget(self._inline_field("Speakers", self.speaker_mode))
-        options_row.addWidget(self.exact_speakers_field)
-        options_row.addWidget(self.min_speakers_field)
-        options_row.addWidget(self.max_speakers_field)
-        options_row.addStretch(1)
-        options_row.addWidget(
-            self._inline_field("Ollama", self.ollama_model_combo, stretch=1),
-            2,
+        ctx_controls = QWidget()
+        ctx_row = QHBoxLayout(ctx_controls)
+        ctx_row.setContentsMargins(0, 0, 0, 0)
+        ctx_row.setSpacing(6)
+        ctx_row.addWidget(self.ollama_ctx_slider)
+        ctx_row.addWidget(self.ollama_ctx_label)
+        ctx_row.addWidget(self.refresh_ollama_button)
+        ctx_controls.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
+
+        self._stage_captions: dict[str, QLabel] = {}
+        models_row = QHBoxLayout()
+        models_row.setSpacing(8)
+        models_row.addWidget(
+            self._stacked_field("Transcribe audio", self.whisper_combo, "transcribe"),
+            1,
         )
-        options_row.addWidget(self._inline_field("Ctx", self.ollama_ctx_slider))
-        options_row.addWidget(self.ollama_ctx_label)
-        options_row.addWidget(self.refresh_ollama_button)
-        setup_layout.addLayout(options_row)
+        models_row.addWidget(
+            self._stacked_field("Align word timestamps", self.alignment_combo, "align"),
+            1,
+        )
+        models_row.addWidget(
+            self._stacked_field("Detect speakers", self.diarization_combo, "diarize"),
+            1,
+        )
+        models_row.addWidget(
+            self._stacked_field("Write meeting notes", self.ollama_model_combo, "summarize"),
+            1,
+        )
+        models_row.addWidget(
+            self._stacked_field("Format PDF notes", self.pdf_engine_combo, "pdf"),
+            1,
+        )
+        models_row.addWidget(self._stacked_field("Notes context", ctx_controls), 0)
+
+        controls_row = QHBoxLayout()
+        controls_row.setSpacing(10)
+        controls_row.addWidget(self._inline_field("Language", self.language_combo))
+        controls_row.addWidget(self._inline_field("Speakers", self.speaker_mode))
+        controls_row.addWidget(self.exact_speakers_field)
+        controls_row.addWidget(self.min_speakers_field)
+        controls_row.addWidget(self.max_speakers_field)
+        controls_row.addStretch(1)
+        setup_layout.addLayout(models_row)
+        setup_layout.addLayout(controls_row)
+        self._populate_whisper_combo()
+        self._populate_alignment_combo()
+        self._populate_diarization_combo()
         self._speaker_mode_changed()
         root.addWidget(self.setup_section)
 
@@ -464,15 +600,42 @@ class MainWindow(QMainWindow):
         self.stage_label.setAlignment(
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
         )
-        self.stage_label.setContentsMargins(12, 0, 12, 0)
         self.stage_label.setAttribute(
             Qt.WidgetAttribute.WA_TransparentForMouseEvents,
             True,
         )
         self.stage_label.setSizePolicy(
-            QSizePolicy.Policy.Ignored,
+            QSizePolicy.Policy.Maximum,
             QSizePolicy.Policy.Ignored,
         )
+
+        self.stage_percent_label = QLabel("")
+        self.stage_percent_label.setObjectName("jobStagePercentLabel")
+        self.stage_percent_label.setAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+        )
+        self.stage_percent_label.setAttribute(
+            Qt.WidgetAttribute.WA_TransparentForMouseEvents,
+            True,
+        )
+        self.stage_percent_label.setSizePolicy(
+            QSizePolicy.Policy.Fixed,
+            QSizePolicy.Policy.Ignored,
+        )
+        self.stage_percent_label.hide()
+
+        progress_overlay = QWidget()
+        progress_overlay.setAttribute(
+            Qt.WidgetAttribute.WA_TransparentForMouseEvents,
+            True,
+        )
+        overlay_row = QHBoxLayout(progress_overlay)
+        overlay_row.setContentsMargins(12, 0, 12, 0)
+        overlay_row.setSpacing(8)
+        overlay_row.addWidget(self.stage_label, 0)
+        overlay_row.addWidget(self.stage_percent_label, 0)
+        overlay_row.addStretch(1)
+        self.progress_overlay = progress_overlay
 
         progress_host = QWidget()
         progress_host.setObjectName("jobProgressHost")
@@ -484,7 +647,8 @@ class MainWindow(QMainWindow):
         progress_stack.setContentsMargins(0, 0, 0, 0)
         progress_stack.setSpacing(0)
         progress_stack.addWidget(self.progress_bar, 0, 0)
-        progress_stack.addWidget(self.stage_label, 0, 0)
+        progress_stack.addWidget(progress_overlay, 0, 0)
+        self._set_stage_status("Ready")
 
         self.cpu_meter, self.cpu_bar, self.cpu_caption = self._build_status_meter(
             "CPU —",
@@ -634,6 +798,344 @@ class MainWindow(QMainWindow):
         self._bind_speaker_nav_shortcuts()
         self._bind_find_shortcut()
         self._update_cache_controls()
+
+    def _stacked_field(
+        self,
+        label_text: str,
+        widget: QWidget,
+        stage_column: str | None = None,
+    ) -> QWidget:
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(2)
+        caption = ElidedLabel(label_text)
+        caption.setObjectName("modelFieldCaption")
+        caption.setProperty("active", "false")
+        layout.addWidget(caption)
+        layout.addWidget(widget)
+        container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        if stage_column:
+            self._stage_captions[stage_column] = caption
+        return container
+
+    def _set_active_stage_column(self, column: str | None, *, keep: bool = False) -> None:
+        if keep:
+            return
+        for name, caption in self._stage_captions.items():
+            active = "true" if name == column else "false"
+            if str(caption.property("active") or "false") == active:
+                continue
+            caption.setProperty("active", active)
+            style = caption.style()
+            style.unpolish(caption)
+            style.polish(caption)
+            caption.update()
+
+    def _whisper_combo_items(self) -> list[ComboModelItem]:
+        names: list[str] = []
+        seen: set[str] = set()
+        for name in list(RECOMMENDED_WHISPER_MODELS) + list(self.settings.extra_whisper_models):
+            runtime = whisper_runtime_id(name)
+            if not runtime or runtime in seen:
+                continue
+            seen.add(runtime)
+            names.append(runtime)
+        return [
+            ComboModelItem(
+                value=name,
+                label=whisper_display_name(name),
+                installed=self._hf_model_installed(whisper_repo_id(name)),
+            )
+            for name in names
+        ]
+
+    def _alignment_combo_items(self) -> list[ComboModelItem]:
+        items = [
+            ComboModelItem(
+                value=ALIGNMENT_AUTO,
+                label="Auto (language default)",
+                detail="WhisperX map",
+                installed=True,
+            ),
+            ComboModelItem(
+                value=RECOMMENDED_ALIGNMENT_MODEL,
+                label="wav2vec2-large-xlsr-53-english",
+                detail="English",
+                installed=self._hf_model_installed(RECOMMENDED_ALIGNMENT_MODEL),
+            ),
+        ]
+        seen = {ALIGNMENT_AUTO, RECOMMENDED_ALIGNMENT_MODEL}
+        for name in self.settings.extra_alignment_models:
+            if name in seen:
+                continue
+            seen.add(name)
+            items.append(
+                ComboModelItem(
+                    value=name,
+                    label=name,
+                    installed=self._hf_model_installed(name),
+                )
+            )
+        return items
+
+    def _diarization_combo_items(self) -> list[ComboModelItem]:
+        items = [
+            ComboModelItem(
+                value=DEFAULT_DIARIZATION_MODEL,
+                label=DEFAULT_DIARIZATION_MODEL,
+                detail="Recommended",
+                installed=self._hf_model_installed(DEFAULT_DIARIZATION_MODEL),
+            ),
+            ComboModelItem(
+                value="pyannote/speaker-diarization-3.0",
+                label="pyannote/speaker-diarization-3.0",
+                installed=self._hf_model_installed("pyannote/speaker-diarization-3.0"),
+            ),
+        ]
+        seen = {DEFAULT_DIARIZATION_MODEL, "pyannote/speaker-diarization-3.0"}
+        for name in self.settings.extra_diarization_models:
+            if name in seen:
+                continue
+            seen.add(name)
+            items.append(
+                ComboModelItem(
+                    value=name,
+                    label=name,
+                    installed=self._hf_model_installed(name),
+                )
+            )
+        return items
+
+    def _ollama_combo_items(self, models: list) -> list[ComboModelItem]:
+        items: list[ComboModelItem] = []
+        used: set[str] = set()
+        for prefix, role in PINNED_OLLAMA_MODELS:
+            match = None
+            for model in models:
+                name = getattr(model, "name", str(model))
+                if name == prefix or name.startswith(f"{prefix}:"):
+                    match = model
+                    break
+            if match is not None:
+                name = getattr(match, "name", str(match))
+                detail = getattr(match, "approx_vram_label", "")
+                items.append(
+                    ComboModelItem(
+                        value=name,
+                        label=name,
+                        detail=f"{role} · {detail}" if detail else role,
+                        installed=True,
+                    )
+                )
+                used.add(name)
+            else:
+                known = self._ollama_name_installed(prefix)
+                items.append(
+                    ComboModelItem(
+                        value=prefix,
+                        label=prefix,
+                        detail=role if known else f"{role} · Not installed",
+                        installed=known,
+                    )
+                )
+                used.add(prefix)
+        for model in models:
+            name = getattr(model, "name", str(model))
+            if name in used:
+                continue
+            detail = getattr(model, "approx_vram_label", "")
+            items.append(
+                ComboModelItem(
+                    value=name,
+                    label=name,
+                    detail=str(detail),
+                    installed=True,
+                )
+            )
+            used.add(name)
+        for name in sorted(self._installed_ollama_names):
+            if name in used:
+                continue
+            if any(
+                name == prefix or name.startswith(f"{prefix}:")
+                for prefix, _ in PINNED_OLLAMA_MODELS
+            ):
+                continue
+            if ":" not in name and any(
+                item.startswith(f"{name}:") for item in self._installed_ollama_names
+            ):
+                continue
+            items.append(
+                ComboModelItem(
+                    value=name,
+                    label=name,
+                    installed=True,
+                )
+            )
+            used.add(name)
+        return items
+
+    def _populate_whisper_combo(self) -> None:
+        self.whisper_combo.blockSignals(True)
+        self.whisper_combo.set_items(self._whisper_combo_items())
+        self.whisper_combo.select_preferred(
+            [self.settings.model, "distil-large-v3", "large-v3"]
+        )
+        self.whisper_combo.blockSignals(False)
+
+    def _populate_alignment_combo(self) -> None:
+        self.alignment_combo.blockSignals(True)
+        self.alignment_combo.set_items(self._alignment_combo_items())
+        self.alignment_combo.select_preferred(
+            [self.settings.alignment_model, ALIGNMENT_AUTO]
+        )
+        self.alignment_combo.blockSignals(False)
+
+    def _populate_diarization_combo(self) -> None:
+        self.diarization_combo.blockSignals(True)
+        self.diarization_combo.set_items(self._diarization_combo_items())
+        self.diarization_combo.select_preferred(
+            [self.settings.diarization_model, DEFAULT_DIARIZATION_MODEL]
+        )
+        self.diarization_combo.blockSignals(False)
+
+    def _persist_combo_setting(self, attr: str, value: str | None) -> None:
+        if not value:
+            return
+        if getattr(self.settings, attr) == value:
+            return
+        setattr(self.settings, attr, value)
+        self.settings_store.save(self.settings)
+
+    def _persist_whisper_model(self, _index: int = 0) -> None:
+        self._persist_combo_setting("model", self.whisper_combo.current_value())
+
+    def _persist_alignment_model(self, _index: int = 0) -> None:
+        self._persist_combo_setting(
+            "alignment_model",
+            self.alignment_combo.current_value(),
+        )
+
+    def _persist_diarization_model(self, _index: int = 0) -> None:
+        self._persist_combo_setting(
+            "diarization_model",
+            self.diarization_combo.current_value(),
+        )
+
+    def _persist_pdf_engine(self, _index: int = 0) -> None:
+        engine = str(self.pdf_engine_combo.currentData() or "reportlab")
+        if engine not in PDF_ENGINES:
+            engine = "reportlab"
+        self._persist_combo_setting("pdf_engine", engine)
+
+    def _append_extra(self, attr: str, name: str) -> None:
+        current = list(getattr(self.settings, attr))
+        if name in current:
+            return
+        current.append(name)
+        setattr(self.settings, attr, current)
+        self.settings_store.save(self.settings)
+
+    def _hf_model_installed(self, repo_id: str) -> bool:
+        if not repo_id:
+            return False
+        if repo_id in self._known_hf_repos:
+            return True
+        if hf_repo_cached(repo_id):
+            self._known_hf_repos.add(repo_id)
+            return True
+        return False
+
+    def _remember_hf_download(self, name: str, *, whisper: bool = False) -> None:
+        if not name:
+            return
+        self._known_hf_repos.add(name)
+        if whisper:
+            runtime = whisper_runtime_id(name)
+            self._known_hf_repos.add(whisper_repo_id(name))
+            self._known_hf_repos.add(whisper_repo_id(runtime))
+
+    def _remember_ollama_download(self, name: str) -> None:
+        if not name:
+            return
+        self._installed_ollama_names.add(name)
+        self._installed_ollama_names.add(name.split(":", 1)[0])
+
+    def _ollama_name_installed(self, name: str) -> bool:
+        if name in self._installed_ollama_names:
+            return True
+        return any(
+            item == name or item.startswith(f"{name}:")
+            for item in self._installed_ollama_names
+        )
+
+    def _open_add_models(self, kind: str) -> None:
+        token = self.settings_store.get_hf_token()
+        if kind == "whisper":
+            from speaker_transcriber.models.hf_catalog import WhisperCatalogProvider
+
+            provider = WhisperCatalogProvider(token)
+        elif kind == "alignment":
+            from speaker_transcriber.models.hf_catalog import AlignmentCatalogProvider
+
+            provider = AlignmentCatalogProvider(token)
+        elif kind == "diarization":
+            from speaker_transcriber.models.hf_catalog import DiarizationCatalogProvider
+
+            provider = DiarizationCatalogProvider(token)
+        else:
+            from speaker_transcriber.models.ollama_catalog import OllamaCatalogProvider
+
+            provider = OllamaCatalogProvider()
+        dialog = AddModelsDialog(provider, self, token=token)
+        dialog.exec()
+        downloaded = dialog.downloaded_names()
+        if kind == "whisper":
+            for name in downloaded:
+                runtime = whisper_runtime_id(name)
+                self._remember_hf_download(name, whisper=True)
+                if runtime not in RECOMMENDED_WHISPER_MODELS:
+                    self._append_extra("extra_whisper_models", runtime)
+            if downloaded:
+                self.settings.model = whisper_runtime_id(downloaded[-1])
+                self.settings_store.save(self.settings)
+            self._populate_whisper_combo()
+        elif kind == "alignment":
+            for name in downloaded:
+                self._remember_hf_download(name)
+                if name not in {ALIGNMENT_AUTO, RECOMMENDED_ALIGNMENT_MODEL}:
+                    self._append_extra("extra_alignment_models", name)
+            if downloaded:
+                self.settings.alignment_model = downloaded[-1]
+                self.settings_store.save(self.settings)
+            self._populate_alignment_combo()
+        elif kind == "diarization":
+            for name in downloaded:
+                self._remember_hf_download(name)
+                if name not in {DEFAULT_DIARIZATION_MODEL, "pyannote/speaker-diarization-3.0"}:
+                    self._append_extra("extra_diarization_models", name)
+            if downloaded:
+                self.settings.diarization_model = downloaded[-1]
+                self.settings_store.save(self.settings)
+            self._populate_diarization_combo()
+        else:
+            for name in downloaded:
+                self._remember_ollama_download(name)
+            if downloaded:
+                self.settings.ollama_model = downloaded[-1]
+                self.settings_store.save(self.settings)
+                self.ollama_model_combo.blockSignals(True)
+                self.ollama_model_combo.set_items(self._ollama_combo_items([]))
+                self.ollama_model_combo.select_preferred(
+                    [
+                        self.settings.ollama_model,
+                        "llama3.2",
+                        "qwen2.5",
+                    ]
+                )
+                self.ollama_model_combo.blockSignals(False)
+            self._refresh_ollama_models()
 
     @staticmethod
     def _inline_field(label_text: str, widget: QWidget, stretch: int = 0) -> QWidget:
@@ -939,7 +1441,7 @@ class MainWindow(QMainWindow):
     def _processing_options(self) -> ProcessingOptions:
         mode = self.speaker_mode.currentIndex()
         return ProcessingOptions(
-            model=str(self.model_combo.currentData()),
+            model=str(self.whisper_combo.current_value() or self.settings.model),
             device="cuda",
             compute_type=self.settings.compute_type,
             batch_size=self.settings.batch_size,
@@ -949,6 +1451,12 @@ class MainWindow(QMainWindow):
             max_speakers=self.max_speakers.value() if mode == 2 else None,
             alignment_device=self.settings.alignment_device,
             diarization_device=self.settings.diarization_device,
+            alignment_model=str(
+                self.alignment_combo.current_value() or self.settings.alignment_model
+            ),
+            diarization_model=str(
+                self.diarization_combo.current_value() or self.settings.diarization_model
+            ),
             merge_gap_seconds=self.settings.merge_gap_seconds,
             max_block_duration_seconds=self.settings.max_block_duration_seconds,
             inherit_speaker_threshold_seconds=(
@@ -981,7 +1489,7 @@ class MainWindow(QMainWindow):
         self.summary_view.clear()
         self.summary_markdown = ""
         self.progress_bar.setValue(1000)
-        self.stage_label.setText(self._cache_status_message(result, sources))
+        self._set_stage_status(self._cache_status_message(result, sources))
         self.elapsed_label.setText("Elapsed: 00:00")
         self._refresh_resource_meters()
         self._show_result(sources)
@@ -1032,15 +1540,40 @@ class MainWindow(QMainWindow):
         self.worker.failed.connect(self._on_failed)
         self.worker.start()
 
+    def _set_stage_status(
+        self,
+        message: str,
+        stage_fraction: float | None = None,
+        stage: str | None = None,
+    ) -> None:
+        self.stage_label.setText(message)
+        tooltip = tooltip_for_progress(stage, message)
+        self.progress_bar.setToolTip(tooltip)
+        self.progress_overlay.setToolTip(tooltip)
+        self.stage_label.setToolTip(tooltip)
+        self.stage_percent_label.setToolTip(tooltip)
+        key = progress_key(stage, message)
+        self._set_active_stage_column(
+            progress_column(stage, message),
+            keep=key in KEEP_COLUMN_KEYS,
+        )
+        if stage_fraction is None:
+            self.stage_percent_label.clear()
+            self.stage_percent_label.hide()
+            return
+        percent = int(round(max(0.0, min(stage_fraction, 1.0)) * 100))
+        self.stage_percent_label.setText(f"{percent}%")
+        self.stage_percent_label.show()
+
     def _cancel(self) -> None:
         if self.worker and self.worker.isRunning():
             self.worker.request_cancel()
-            self.stage_label.setText("Cancellation requested; waiting for a safe boundary…")
+            self._set_stage_status("Cancellation requested; waiting for a safe boundary…")
             self.cancel_button.setEnabled(False)
 
     def _on_progress(self, update: ProgressUpdate) -> None:
         self.progress_bar.setValue(round(update.progress * 1000))
-        self.stage_label.setText(update.message)
+        self._set_stage_status(update.message, update.stage_fraction, update.stage)
         if update.vram_total_mb:
             self._set_vram_meter(update.vram_used_mb, update.vram_total_mb)
         self.elapsed_label.setText(
@@ -1061,7 +1594,7 @@ class MainWindow(QMainWindow):
             self.log_output.appendPlainText(f"Failed to save speaker names: {exc}")
         self.progress_bar.setValue(1000)
         configuration = result.fallback_config
-        self.stage_label.setText(
+        self._set_stage_status(
             "Complete — "
             f"{configuration.get('model', 'model unknown')}, "
             f"batch {configuration.get('batch_size', '?')}, "
@@ -1077,7 +1610,7 @@ class MainWindow(QMainWindow):
 
     def _on_cancelled(self, partial_result: TranscriptResult | None) -> None:
         self.result = partial_result
-        self.stage_label.setText(
+        self._set_stage_status(
             "Cancelled; partial transcript preserved"
             if partial_result
             else "Cancelled"
@@ -1087,7 +1620,7 @@ class MainWindow(QMainWindow):
         self._set_busy(False)
 
     def _on_failed(self, message: str) -> None:
-        self.stage_label.setText("Processing failed")
+        self._set_stage_status("Processing failed")
         self.log_output.appendPlainText(message)
         self.log_section.set_expanded(True)
         QMessageBox.critical(self, "Processing failed", message)
@@ -1106,12 +1639,17 @@ class MainWindow(QMainWindow):
         has_result = self.result is not None
         self.export_button.setEnabled(not blocked and has_result)
         self.export_pdf_button.setEnabled(not blocked and has_result)
-        ollama_ready = self.ollama_model_combo.has_selectable_model()
+        selected_ollama = self.ollama_model_combo.current_value() or ""
+        ollama_ready = bool(selected_ollama) and self._ollama_name_installed(selected_ollama)
         self.summarize_button.setEnabled(
             not blocked and has_result and ollama_ready
         )
         self.refresh_ollama_button.setEnabled(not blocked)
-        self.ollama_model_combo.setEnabled(not blocked and ollama_ready)
+        self.whisper_combo.setEnabled(not blocked)
+        self.alignment_combo.setEnabled(not blocked)
+        self.diarization_combo.setEnabled(not blocked)
+        self.ollama_model_combo.setEnabled(not blocked)
+        self.pdf_engine_combo.setEnabled(not blocked)
         self.ollama_ctx_slider.setEnabled(not blocked)
         if not blocked:
             self.elapsed_timer.stop()
@@ -1380,14 +1918,25 @@ class MainWindow(QMainWindow):
     def _refresh_ollama_models(self) -> None:
         if self.ollama_model_worker and self.ollama_model_worker.isRunning():
             return
-        self.ollama_model_combo.set_placeholder("Loading models…", enabled=False)
-        self.summarize_button.setEnabled(False)
+        if not self.ollama_model_combo.has_selectable_model():
+            self.ollama_model_combo.set_placeholder("Loading models…", enabled=True)
+            self.summarize_button.setEnabled(False)
         self.ollama_model_worker = OllamaModelListWorker(self)
         self.ollama_model_worker.completed.connect(self._on_ollama_models_loaded)
         self.ollama_model_worker.failed.connect(self._on_ollama_models_failed)
         self.ollama_model_worker.start()
 
-    def _on_ollama_model_changed(self, _index: int = 0) -> None:
+    def _on_ollama_model_changed(self, index: int = 0) -> None:
+        item = self.ollama_model_combo.model().item(index, 0)
+        kind = item.data(Qt.ItemDataRole.UserRole + 1) if item is not None else None
+        if kind in {"add", "separator", "placeholder"}:
+            return
+        if getattr(self.ollama_model_combo, "_restoring", False):
+            return
+        model_name = self.ollama_model_combo.current_model_name()
+        if model_name and not self._ollama_name_installed(model_name):
+            self._open_add_models("ollama")
+            return
         self._persist_ollama_model_selection()
         self._cap_ctx_slider_for_model()
 
@@ -1456,22 +2005,30 @@ class MainWindow(QMainWindow):
         from speaker_transcriber.models.summarization import OllamaModelInfo
 
         if not models:
-            self.ollama_model_combo.set_placeholder("No models installed", enabled=False)
-            self.summarize_button.setEnabled(False)
-            self.summarize_button.setToolTip(
-                "Install a model with `ollama pull` and click Refresh."
-            )
+            self.ollama_model_combo.blockSignals(True)
+            self.ollama_model_combo.set_items(self._ollama_combo_items([]))
+            self.ollama_model_combo.blockSignals(False)
+            if not self._installed_ollama_names:
+                self.summarize_button.setToolTip(
+                    "Download llama3.2 or qwen2.5 with Add Models…, then click Refresh."
+                )
+            self._set_busy(False)
             return
         model_infos = [
             model if isinstance(model, OllamaModelInfo) else OllamaModelInfo(str(model))
             for model in models
         ]
+        listed = {model.name for model in model_infos}
+        self._installed_ollama_names.update(listed)
+        self._installed_ollama_names.update(name.split(":", 1)[0] for name in listed)
         self.ollama_model_combo.setEnabled(True)
         self.ollama_model_combo.blockSignals(True)
-        self.ollama_model_combo.set_models(model_infos)
+        self.ollama_model_combo.set_items(self._ollama_combo_items(model_infos))
         self.ollama_model_combo.select_preferred_model(
             [
                 self.settings.ollama_model,
+                "llama3.2",
+                "qwen2.5",
                 RequirementsSummarizer.MODEL_NAME,
             ]
         )
@@ -1481,10 +2038,12 @@ class MainWindow(QMainWindow):
         self._set_busy(False)
 
     def _on_ollama_models_failed(self, message: str) -> None:
-        self.ollama_model_combo.set_placeholder("Ollama unavailable", enabled=False)
+        self.ollama_model_combo.blockSignals(True)
+        self.ollama_model_combo.set_items(self._ollama_combo_items([]))
+        self.ollama_model_combo.blockSignals(False)
         self.summarize_button.setEnabled(False)
         self.summarize_button.setToolTip(
-            "Start Ollama locally, then click Refresh to load available models."
+            "Start Ollama locally, then use Add Models… or Refresh."
         )
         self.log_output.appendPlainText(f"Ollama model list failed: {message}")
         self._set_busy(False)
@@ -1570,16 +2129,16 @@ class MainWindow(QMainWindow):
         if not directory:
             return
         try:
-            self.stage_label.setText("Exporting files…")
+            self._set_stage_status("Exporting files…")
             paths = export_result(self.result, directory, formats)
-            self.stage_label.setText("Export complete")
+            self._set_stage_status("Export complete")
             QMessageBox.information(
                 self,
                 "Export complete",
                 "\n".join(str(path) for path in paths),
             )
         except Exception as exc:
-            self.stage_label.setText("Export failed")
+            self._set_stage_status("Export failed")
             QMessageBox.critical(self, "Export failed", str(exc))
 
     def _current_summary_markdown(self) -> str:
@@ -1647,7 +2206,7 @@ class MainWindow(QMainWindow):
         self.progress_bar.setValue(0)
         self.started_at = time.monotonic()
         self.elapsed_timer.start(1000)
-        self.stage_label.setText("Starting PDF export…")
+        self._set_stage_status("Starting PDF export…", 0.0)
         self._set_busy(False, exporting_pdf=True)
         self.pdf_export_worker = PdfExportWorker(
             str(path),
@@ -1655,6 +2214,7 @@ class MainWindow(QMainWindow):
             existing_markdown,
             str(model_name or ""),
             self._current_ollama_num_ctx(),
+            str(self.pdf_engine_combo.currentData() or self.settings.pdf_engine),
             self,
         )
         self.pdf_export_worker.progress.connect(self._on_summary_progress)
@@ -1683,7 +2243,7 @@ class MainWindow(QMainWindow):
     def _pdf_export_completed(self, destination: str) -> None:
         self._pdf_streaming_summary = False
         self.progress_bar.setValue(1000)
-        self.stage_label.setText("PDF export complete")
+        self._set_stage_status("PDF export complete")
         self._set_busy(False)
         QMessageBox.information(self, "PDF export complete", destination)
 
@@ -1692,7 +2252,7 @@ class MainWindow(QMainWindow):
         self.log_output.appendPlainText(f"PDF export failed: {message}")
         self.log_section.set_expanded(True)
         self.progress_bar.setValue(0)
-        self.stage_label.setText("PDF export failed")
+        self._set_stage_status("PDF export failed")
         self._set_busy(False)
         QMessageBox.critical(self, "PDF export failed", message)
 
@@ -1723,7 +2283,7 @@ class MainWindow(QMainWindow):
         self.progress_bar.setValue(0)
         self.started_at = time.monotonic()
         self.elapsed_timer.start(1000)
-        self.stage_label.setText("Starting summarization…")
+        self._set_stage_status("Starting summarization…", 0.0)
         self._set_busy(False, summarizing=True)
         self.summary_worker = SummarizationWorker(
             render_text(self.result),
@@ -1744,7 +2304,7 @@ class MainWindow(QMainWindow):
         if not isinstance(update, SummarizationProgress):
             return
         self.progress_bar.setValue(round(update.fraction * 1000))
-        self.stage_label.setText(update.message)
+        self._set_stage_status(update.message, update.fraction)
 
     def _on_summary_chunk(self, text: str) -> None:
         cursor = self.summary_view.textCursor()
@@ -1767,7 +2327,7 @@ class MainWindow(QMainWindow):
                 "Try a non-reasoning model or click Summarize again."
             )
         self.progress_bar.setValue(1000)
-        self.stage_label.setText("Summary complete" if text.strip() else "Summary failed")
+        self._set_stage_status("Summary complete" if text.strip() else "Summary failed")
         self._set_busy(False)
 
     def _summary_failed(self, message: str) -> None:
@@ -1776,7 +2336,7 @@ class MainWindow(QMainWindow):
         self.log_output.appendPlainText(f"Summarization failed: {message}")
         self.log_section.set_expanded(True)
         self.progress_bar.setValue(0)
-        self.stage_label.setText("Summary failed")
+        self._set_stage_status("Summary failed")
         self._set_busy(False)
 
     def _update_elapsed(self) -> None:

@@ -94,3 +94,36 @@ def test_ollama_num_ctx_snaps_to_nearest_choice() -> None:
     settings = AppSettings(ollama_num_ctx=10000)
     settings.validate()
     assert settings.ollama_num_ctx == 8192
+
+
+def test_pipeline_model_settings_round_trip(tmp_path) -> None:
+    store = SettingsStore(tmp_path)
+    settings = AppSettings(
+        model="tiny",
+        alignment_model="jonatasgrosman/wav2vec2-large-xlsr-53-english",
+        diarization_model="pyannote/speaker-diarization-3.0",
+        extra_whisper_models=["tiny", "base"],
+        extra_alignment_models=["facebook/wav2vec2-base-960h"],
+        extra_diarization_models=["pyannote/speaker-diarization-3.0"],
+        pdf_engine="weasyprint",
+    )
+    store.save(settings)
+    loaded = store.load()
+    assert loaded.model == "tiny"
+    assert loaded.alignment_model == "jonatasgrosman/wav2vec2-large-xlsr-53-english"
+    assert loaded.diarization_model == "pyannote/speaker-diarization-3.0"
+    assert loaded.extra_whisper_models == ["tiny", "base"]
+    assert loaded.extra_alignment_models == ["facebook/wav2vec2-base-960h"]
+    assert loaded.pdf_engine == "weasyprint"
+
+
+def test_unknown_whisper_model_is_allowed() -> None:
+    settings = AppSettings(model="Systran/faster-whisper-tiny")
+    settings.validate()
+    assert settings.model == "Systran/faster-whisper-tiny"
+
+
+def test_invalid_pdf_engine_falls_back_to_reportlab() -> None:
+    settings = AppSettings(pdf_engine="not-an-engine")
+    settings.validate()
+    assert settings.pdf_engine == "reportlab"
