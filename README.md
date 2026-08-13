@@ -210,6 +210,13 @@ The pipeline automatically retries CUDA OOM failures. It halves batch size,
 falls from `large-v3` to `distil-large-v3`, then to `medium`, and can move
 alignment and diarization to CPU. The selected fallback is shown in the log.
 
+Meeting notes are handled differently, because changing the context window or the
+model changes the result. If Ollama runs out of GPU memory while writing notes, a
+modal dialog offers to lower the Notes context one step, switch to a smaller
+installed model, retry unchanged, or stop and keep the text already written. Tick
+**Always use this option** to save that choice and skip the dialog next time; the
+dialog reappears whenever the saved option cannot be applied.
+
 ## Troubleshooting
 
 **FFmpeg not installed**

@@ -53,7 +53,7 @@ output/
 *.mov
 
 # Ollama models (these are managed by Ollama)
-models/
+/models/
 .cache/
 huggingface/
 

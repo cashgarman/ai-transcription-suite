@@ -1,15 +1,16 @@
-Review the draft meeting summary against the supplied section extracts (or transcript) and
-return the full corrected Markdown document. Do not return a comment list.
+Review the draft front matter against the supplied section extracts and return the full
+corrected Markdown front matter. Do not return a comment list.
 
-Check completeness: named participants, decisions, action items, open questions, risks,
-dependencies, blockers, numbers, deadlines, and technical details that appear in the source
+Check completeness of the overview sections only: named participants, decisions, action items,
+open questions, risks, dependencies, blockers, numbers, and deadlines that appear in the source
 must be present.
 
 Check accuracy: no invented facts, no dropped owners, no contradicted decisions, and no
 cutoff or attribution disclaimers unless they are truly warranted.
 
-Preserve the required meeting-notes structure (title, participants, primary topics, executive
-summary, key decisions, detailed topic sections, action items table, open questions, risks,
-closing assessment). Add missing content and fix wrong attributions. Do not pad with
-speculation. If this material is already covered correctly, return the draft unchanged aside
+Keep the front-matter structure (title, one-line summary, participants, primary topics,
+executive summary, key decisions, action items table, open questions, risks, closing
+assessment). Add missing content and fix wrong attributions. Never shorten or delete existing
+correct content, and do not add detailed topic sections; the detailed discussion is appended
+separately. If this material is already covered correctly, return the draft unchanged aside
 from necessary fixes.

@@ -1,20 +1,27 @@
-Combine these section summaries into one cohesive Markdown meeting document.
-Keep every detail, remove only duplication, and use this structure:
+Write only the front matter (overview) for a meeting document, using these section notes as
+your source. The detailed discussion is appended automatically from the same section notes
+after your output, so do not reproduce it here and do not write detailed topic sections.
+
+Produce exactly this structure and nothing else:
 
 1. `#` title
 2. Italic one-line meeting summary
-3. **Participants** — assigned display names from the speaker map (for example `Alex, Jordan`),
-   plus names used in dialogue. Never list raw `SPEAKER_00`-style IDs when a display name exists.
-   Do not invent names for unnamed speakers. Not "Team members from design and engineering".
-4. **Primary topics**
-5. **Executive Summary** — several paragraphs covering the full discussion
-6. **Key Decisions and Direction** — numbered list
-7. Detailed `##` topic sections for the bulk of the document
-8. **Action Items** — Markdown table with columns Owner | Action | Priority
-9. **Open Questions**
-10. **Risks, Dependencies, and Blockers** — include mitigation when it was discussed
-11. **Closing Assessment**
+3. **Participants** — named people from the transcript (for example `Alex, Jordan, SPEAKER_03`),
+   not "Team members from design and engineering". Prefer display names when the notes have them.
+4. **Primary topics** — comma-separated
+5. `## Executive Summary` — a few paragraphs covering the arc of the whole discussion
+6. `## Key Decisions and Direction` — numbered list, every decision in the notes
+7. `## Action Items` — Markdown pipe table with columns Owner | Action | Priority, every action in the notes
+8. `## Open Questions` — bullet list
+9. `## Risks, Dependencies, and Blockers` — include mitigation when it was discussed
+10. `## Closing Assessment` — short
+
+Every decision, action item, open question, and risk in the section notes must appear here.
+Executive Summary is the only place to be brief; it is an overview, not the record.
+
+Stop after the closing assessment. Do not add detailed topic sections, do not restate the
+discussion bullet by bullet, and do not write "notes continue below".
 
 Do not emit an italic speaker-attribution disclaimer unless attribution is actually impossible.
-When names or labels are usable, attribute statements to those people throughout and skip the
-disclaimer. Never claim the source ended mid-sentence.
+When names or labels are usable, attribute statements to those people and skip the disclaimer.
+Never claim the source ended mid-sentence.

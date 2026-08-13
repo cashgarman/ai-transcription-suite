@@ -8,12 +8,93 @@ from PySide6.QtCore import QThread, Signal
 
 from speaker_transcriber.errors import ProcessingCancelled
 from speaker_transcriber.models.summarization import SummarizationProgress
-from speaker_transcriber.config import DEFAULT_OLLAMA_NUM_CTX
 from speaker_transcriber.pipeline.processor import TranscriptionProcessor
 from speaker_transcriber.pipeline.types import ProcessingOptions, ProgressUpdate
+from speaker_transcriber.ui.oom_recovery_dialog import (
+    OomRecoveryChoice,
+    OomRecoveryRequest,
+    REDUCE_CTX,
+    SMALLER_MODEL,
+    STOP,
+)
 
 
 LOGGER = logging.getLogger("speaker_transcriber.worker")
+
+
+class NotesMemoryRecoveryMixin:
+    """Pauses a notes worker on GPU OOM until the UI supplies a recovery choice."""
+
+    oom_detected = None  # provided by the QThread subclass as a Signal
+
+    def _init_recovery(self) -> None:
+        self._recovery_event = threading.Event()
+        self._recovery_choice: OomRecoveryChoice | None = None
+
+    def provide_recovery(self, choice: OomRecoveryChoice) -> None:
+        """Called from the UI thread once the user has chosen how to continue."""
+        self._recovery_choice = choice
+        self._recovery_event.set()
+
+    def _apply_recovery(self, error: Exception) -> bool:
+        """Ask the UI what to do. Returns True when the caller should retry."""
+        from speaker_transcriber.config import previous_ollama_num_ctx
+
+        self._recovery_event.clear()
+        self._recovery_choice = None
+        self.oom_detected.emit(
+            OomRecoveryRequest(
+                model_name=self.model_name,
+                num_ctx=self.num_ctx,
+                message=str(error),
+                reduced_num_ctx=previous_ollama_num_ctx(self.num_ctx),
+                smaller_model=self._smaller_model(),
+            )
+        )
+        self._recovery_event.wait()
+        choice = self._recovery_choice
+        if choice is None or choice.action == STOP:
+            return False
+        if choice.action == REDUCE_CTX and choice.num_ctx:
+            LOGGER.info(
+                "Retrying notes with a smaller context window (%d to %d)",
+                self.num_ctx,
+                choice.num_ctx,
+            )
+            self.num_ctx = int(choice.num_ctx)
+        elif choice.action == SMALLER_MODEL and choice.model_name:
+            LOGGER.info(
+                "Retrying notes with a smaller model (%s to %s)",
+                self.model_name,
+                choice.model_name,
+            )
+            self.model_name = str(choice.model_name)
+        else:
+            LOGGER.info("Retrying notes with unchanged settings")
+        return True
+
+    def _smaller_model(self) -> str:
+        from speaker_transcriber.models.summarization import RequirementsSummarizer
+
+        try:
+            models = RequirementsSummarizer.list_available_models()
+        except Exception:
+            LOGGER.debug("Could not list Ollama models for recovery", exc_info=True)
+            return ""
+        current = next(
+            (model for model in models if model.name == self.model_name),
+            None,
+        )
+        if current is None or not current.size_bytes:
+            return ""
+        smaller = [
+            model
+            for model in models
+            if model.size_bytes and model.size_bytes < current.size_bytes
+        ]
+        if not smaller:
+            return ""
+        return max(smaller, key=lambda model: model.size_bytes or 0).name
 
 
 class ProcessingWorker(QThread):
@@ -153,59 +234,79 @@ class OllamaModelListWorker(QThread):
             self.failed.emit(str(exc))
 
 
-class SummarizationWorker(QThread):
+class SummarizationWorker(QThread, NotesMemoryRecoveryMixin):
     progress = Signal(object)
     chunk = Signal(str)
     section_break = Signal()
     completed = Signal(str)
     failed = Signal(str)
+    cancelled = Signal()
+    oom_detected = Signal(object)
 
     def __init__(
         self,
         text: str,
         model_name: str,
-        num_ctx: int = DEFAULT_OLLAMA_NUM_CTX,
+        num_ctx: int,
         parent=None,
     ) -> None:
         super().__init__(parent)
         self.text = text
         self.model_name = model_name
-        self.num_ctx = num_ctx
+        self.num_ctx = int(num_ctx)
+        self._init_recovery()
 
     def run(self) -> None:
-        try:
-            from speaker_transcriber.models.summarization import RequirementsSummarizer
+        from speaker_transcriber.models.summarization import (
+            OllamaOutOfMemoryError,
+            RequirementsSummarizer,
+        )
 
-            summarizer = RequirementsSummarizer(self.model_name, num_ctx=self.num_ctx)
+        def on_progress(fraction: float, message: str) -> None:
+            self.progress.emit(SummarizationProgress(fraction, message))
 
-            def on_progress(fraction: float, message: str) -> None:
-                self.progress.emit(SummarizationProgress(fraction, message))
+        def on_chunk(text: str) -> None:
+            self.chunk.emit(text)
 
-            def on_chunk(text: str) -> None:
-                self.chunk.emit(text)
+        def on_section_break() -> None:
+            self.section_break.emit()
 
-            def on_section_break() -> None:
-                self.section_break.emit()
+        while True:
+            try:
+                summarizer = RequirementsSummarizer(
+                    self.model_name,
+                    num_ctx=self.num_ctx,
+                )
+                summary = summarizer.summarize(
+                    self.text,
+                    on_progress=on_progress,
+                    on_chunk=on_chunk,
+                    on_section_break=on_section_break,
+                )
+                self.completed.emit(summary)
+                return
+            except OllamaOutOfMemoryError as exc:
+                LOGGER.warning("Summarization ran out of GPU memory: %s", exc)
+                if self._apply_recovery(exc):
+                    self.section_break.emit()
+                    continue
+                self.cancelled.emit()
+                return
+            except Exception as exc:
+                LOGGER.exception("Summarization worker failed")
+                self.failed.emit(str(exc))
+                return
 
-            summary = summarizer.summarize(
-                self.text,
-                on_progress=on_progress,
-                on_chunk=on_chunk,
-                on_section_break=on_section_break,
-            )
-            self.completed.emit(summary)
-        except Exception as exc:
-            LOGGER.exception("Summarization worker failed")
-            self.failed.emit(str(exc))
 
-
-class PdfExportWorker(QThread):
+class PdfExportWorker(QThread, NotesMemoryRecoveryMixin):
     progress = Signal(object)
     chunk = Signal(str)
     section_break = Signal()
     summary_ready = Signal(str)
     completed = Signal(str)
     failed = Signal(str)
+    cancelled = Signal()
+    oom_detected = Signal(object)
 
     SUMMARIZE_END = 0.70
     FORMAT_END = 0.85
@@ -216,7 +317,7 @@ class PdfExportWorker(QThread):
         transcript_text: str,
         existing_markdown: str = "",
         model_name: str = "",
-        num_ctx: int = DEFAULT_OLLAMA_NUM_CTX,
+        num_ctx: int = 0,
         pdf_engine: str = "reportlab",
         parent=None,
     ) -> None:
@@ -225,92 +326,116 @@ class PdfExportWorker(QThread):
         self.transcript_text = transcript_text
         self.existing_markdown = existing_markdown
         self.model_name = model_name
-        self.num_ctx = num_ctx
+        self.num_ctx = int(num_ctx)
         self.pdf_engine = pdf_engine
+        self._init_recovery()
 
     def run(self) -> None:
-        try:
-            from pathlib import Path
+        from speaker_transcriber.models.summarization import OllamaOutOfMemoryError
 
-            from speaker_transcriber.export.meeting_document import (
-                parse_meeting_markdown,
-            )
-            from speaker_transcriber.export.pdf_exporter import export_meeting_pdf
-            from speaker_transcriber.models.summarization import (
-                RequirementsSummarizer,
-                SummarizationProgress,
+        while True:
+            try:
+                self._export()
+                return
+            except OllamaOutOfMemoryError as exc:
+                LOGGER.warning("PDF notes generation ran out of GPU memory: %s", exc)
+                if self._apply_recovery(exc):
+                    self.section_break.emit()
+                    continue
+                self.cancelled.emit()
+                return
+            except Exception as exc:
+                LOGGER.exception("PDF export worker failed")
+                self.failed.emit(str(exc))
+                return
+
+    def _export(self) -> None:
+        from pathlib import Path
+
+        from speaker_transcriber.export.meeting_document import (
+            parse_meeting_markdown,
+        )
+        from speaker_transcriber.export.pdf_exporter import export_meeting_pdf
+        from speaker_transcriber.models.summarization import (
+            RequirementsSummarizer,
+            SummarizationProgress,
+        )
+
+        def emit_progress(fraction: float, message: str) -> None:
+            self.progress.emit(
+                SummarizationProgress(min(max(fraction, 0.0), 1.0), message)
             )
 
-            def emit_progress(fraction: float, message: str) -> None:
-                self.progress.emit(
-                    SummarizationProgress(min(max(fraction, 0.0), 1.0), message)
+        markdown = self.existing_markdown.strip()
+        stream_chunks = not bool(markdown)
+        summarizer = None
+
+        if not markdown:
+            if not self.model_name:
+                raise RuntimeError(
+                    "Select an available Ollama model before exporting a PDF "
+                    "without an existing summary."
                 )
+            if self.num_ctx <= 0:
+                raise RuntimeError(
+                    "A Notes context length is required to write meeting notes."
+                )
+            emit_progress(0.0, "Summarizing for PDF…")
+            summarizer = RequirementsSummarizer(
+                self.model_name,
+                num_ctx=self.num_ctx,
+            )
 
-            markdown = self.existing_markdown.strip()
-            stream_chunks = not bool(markdown)
-            summarizer = None
+            def on_summarize_progress(fraction: float, message: str) -> None:
+                emit_progress(fraction * self.SUMMARIZE_END, message)
 
-            if not markdown:
-                if not self.model_name:
-                    raise RuntimeError(
-                        "Select an available Ollama model before exporting a PDF "
-                        "without an existing summary."
-                    )
-                emit_progress(0.0, "Summarizing for PDF…")
+            def on_chunk(text: str) -> None:
+                if stream_chunks:
+                    self.chunk.emit(text)
+
+            def on_section_break() -> None:
+                if stream_chunks:
+                    self.section_break.emit()
+
+            markdown = summarizer.summarize(
+                self.transcript_text,
+                on_progress=on_summarize_progress,
+                on_chunk=on_chunk,
+                on_section_break=on_section_break,
+            )
+        else:
+            emit_progress(0.05, "Parsing meeting notes…")
+
+        document = parse_meeting_markdown(markdown)
+        if document.needs_format_pass():
+            if not self.model_name:
+                raise RuntimeError(
+                    "The meeting notes need formatting. Select an Ollama model "
+                    "and try again."
+                )
+            if self.num_ctx <= 0:
+                raise RuntimeError(
+                    "A Notes context length is required to format meeting notes."
+                )
+            if summarizer is None:
                 summarizer = RequirementsSummarizer(
                     self.model_name,
                     num_ctx=self.num_ctx,
                 )
+            emit_progress(self.SUMMARIZE_END, "Formatting meeting notes…")
 
-                def on_summarize_progress(fraction: float, message: str) -> None:
-                    emit_progress(fraction * self.SUMMARIZE_END, message)
+            def on_format_progress(fraction: float, message: str) -> None:
+                span = self.FORMAT_END - self.SUMMARIZE_END
+                emit_progress(self.SUMMARIZE_END + fraction * span, message)
 
-                def on_chunk(text: str) -> None:
-                    if stream_chunks:
-                        self.chunk.emit(text)
-
-                def on_section_break() -> None:
-                    if stream_chunks:
-                        self.section_break.emit()
-
-                markdown = summarizer.summarize(
-                    self.transcript_text,
-                    on_progress=on_summarize_progress,
-                    on_chunk=on_chunk,
-                    on_section_break=on_section_break,
-                )
-            else:
-                emit_progress(0.05, "Parsing meeting notes…")
-
+            markdown = summarizer.format_meeting_notes(
+                markdown,
+                on_progress=on_format_progress,
+            )
             document = parse_meeting_markdown(markdown)
-            if document.needs_format_pass():
-                if not self.model_name:
-                    raise RuntimeError(
-                        "The meeting notes need formatting. Select an Ollama model "
-                        "and try again."
-                    )
-                if summarizer is None:
-                    summarizer = RequirementsSummarizer(
-                        self.model_name,
-                        num_ctx=self.num_ctx,
-                    )
-                emit_progress(self.SUMMARIZE_END, "Formatting meeting notes…")
 
-                def on_format_progress(fraction: float, message: str) -> None:
-                    span = self.FORMAT_END - self.SUMMARIZE_END
-                    emit_progress(self.SUMMARIZE_END + fraction * span, message)
-
-                markdown = summarizer.format_meeting_notes(
-                    markdown,
-                    on_progress=on_format_progress,
-                )
-                document = parse_meeting_markdown(markdown)
-
-            self.summary_ready.emit(markdown)
-            emit_progress(self.FORMAT_END, "Writing PDF…")
-            export_meeting_pdf(document, Path(self.destination), engine=self.pdf_engine)
-            emit_progress(1.0, "PDF export complete")
-            self.completed.emit(self.destination)
-        except Exception as exc:
-            LOGGER.exception("PDF export worker failed")
-            self.failed.emit(str(exc))
+        self.summary_ready.emit(markdown)
+        emit_progress(self.FORMAT_END, "Writing PDF…")
+        export_meeting_pdf(document, Path(self.destination), engine=self.pdf_engine)
+        emit_progress(1.0, "PDF export complete")
+        self.completed.emit(self.destination)

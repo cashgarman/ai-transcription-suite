@@ -1,6 +1,10 @@
 import pytest
 
-from speaker_transcriber.config import AppSettings, SettingsStore
+from speaker_transcriber.config import (
+    AppSettings,
+    SettingsStore,
+    previous_ollama_num_ctx,
+)
 
 
 def test_settings_round_trip(tmp_path) -> None:
@@ -94,6 +98,25 @@ def test_ollama_num_ctx_snaps_to_nearest_choice() -> None:
     settings = AppSettings(ollama_num_ctx=10000)
     settings.validate()
     assert settings.ollama_num_ctx == 8192
+
+
+def test_ollama_oom_policy_round_trip(tmp_path) -> None:
+    store = SettingsStore(tmp_path)
+    store.save(AppSettings(ollama_oom_policy="reduce_ctx"))
+    assert store.load().ollama_oom_policy == "reduce_ctx"
+
+
+def test_unknown_ollama_oom_policy_is_cleared() -> None:
+    settings = AppSettings(ollama_oom_policy="explode")
+    settings.validate()
+    assert settings.ollama_oom_policy == ""
+
+
+def test_previous_ollama_num_ctx_steps_down_one_choice() -> None:
+    assert previous_ollama_num_ctx(16384) == 8192
+    assert previous_ollama_num_ctx(8192) == 4096
+    assert previous_ollama_num_ctx(4096) is None
+    assert previous_ollama_num_ctx(10000) == 4096
 
 
 def test_pipeline_model_settings_round_trip(tmp_path) -> None:

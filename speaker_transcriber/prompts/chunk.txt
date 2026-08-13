@@ -1,21 +1,25 @@
-Extract a dense structured dump of this transcript segment. This is an extraction pass,
-not the final meeting document. Use compact Markdown bullets and short labeled lines, not prose.
+Write detailed notes for this transcript segment. These notes are kept verbatim as the
+detailed record of the meeting, so completeness matters more than brevity. Nothing you
+leave out can be recovered later.
+
+Use compact Markdown bullets and short labeled lines, not flowing prose.
 
 Use these headings when the segment has material for them:
-- **Participants** — assigned display names from the speaker map, plus names mentioned in dialogue.
-  Do not list raw `SPEAKER_00`-style IDs when a display name exists. Do not invent names.
+- **Participants** — actual speaker names and labels as they appear, plus names mentioned in dialogue.
   Do not paraphrase participants as a role group.
-- **Topics**
+- **Discussion** — every substantive point, in the order it was raised, attributed to the
+  speaker who made it. One bullet per point. Include the reasoning people gave, the examples
+  they used, disagreements, and answers to questions.
 - **Decisions**
 - **Action items** — owner, action, and priority when stated
-- **Questions**
+- **Questions** — asked and, when given, answered
 - **Risks / blockers / dependencies**
 - **Technical details** — numbers, deadlines, names, roles, constraints, systems
-- **Attributions** — who said what, when labels or names are available
 
 Preserve every substantive topic, decision, request, concern, question, answer, number,
 deadline, name, role, action item, constraint, risk, dependency, blocker, and technical detail.
-Drop filler, repetition, and narrative recap.
+Drop only filler, verbatim repetition, and narrative recap. Do not summarize a long exchange
+into a single sentence; keep the substance of each turn that carried meaning.
 
 Honor the markers `[MORE SEGMENTS FOLLOW]` and `[END OF TRANSCRIPT]`. If more segments
 follow, do not write a closing assessment or claim the meeting ended.

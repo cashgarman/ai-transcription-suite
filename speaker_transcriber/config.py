@@ -16,6 +16,7 @@ SPEAKER_MODES = ("automatic", "exact", "minmax")
 PDF_ENGINES = ("reportlab", "weasyprint")
 OLLAMA_CTX_CHOICES = (4096, 8192, 16384, 32768, 65536, 131072)
 DEFAULT_OLLAMA_NUM_CTX = 8192
+OLLAMA_OOM_POLICIES = ("", "reduce_ctx", "smaller_model")
 DEFAULT_ALIGNMENT_MODEL = "auto"
 DEFAULT_DIARIZATION_MODEL = "pyannote/speaker-diarization-3.1"
 
@@ -28,6 +29,13 @@ def _string_list(value: object) -> list[str]:
 
 def snap_ollama_num_ctx(value: int) -> int:
     return min(OLLAMA_CTX_CHOICES, key=lambda choice: abs(choice - int(value)))
+
+
+def previous_ollama_num_ctx(value: int) -> int | None:
+    """The next smaller context choice, or None when already at the smallest."""
+    current = snap_ollama_num_ctx(value)
+    smaller = [choice for choice in OLLAMA_CTX_CHOICES if choice < current]
+    return smaller[-1] if smaller else None
 
 
 def format_ctx_label(num_ctx: int) -> str:
@@ -85,6 +93,7 @@ class AppSettings:
     use_cached_transcript: bool = True
     ollama_model: str = "qwen3.5:9b"
     ollama_num_ctx: int = DEFAULT_OLLAMA_NUM_CTX
+    ollama_oom_policy: str = ""
     recent_files: list[str] = field(default_factory=list)
 
     def validate(self) -> None:
@@ -121,6 +130,8 @@ class AppSettings:
             self.ollama_num_ctx = snap_ollama_num_ctx(ctx)
         else:
             self.ollama_num_ctx = ctx
+        policy = str(self.ollama_oom_policy or "").strip()
+        self.ollama_oom_policy = policy if policy in OLLAMA_OOM_POLICIES else ""
         engine = str(self.pdf_engine or "reportlab").strip().lower()
         self.pdf_engine = engine if engine in PDF_ENGINES else "reportlab"
         self.alignment_model = str(self.alignment_model or DEFAULT_ALIGNMENT_MODEL).strip() or DEFAULT_ALIGNMENT_MODEL

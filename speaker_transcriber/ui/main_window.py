@@ -111,6 +111,13 @@ from speaker_transcriber.ui.duration_probe_worker import MediaDurationProbeWorke
 from speaker_transcriber.ui.input_timeline import InputTimelineWidget
 from speaker_transcriber.ui.model_combo import ComboModelItem, ModelComboBox
 from speaker_transcriber.ui.notification import NotificationBanner
+from speaker_transcriber.ui.oom_recovery_dialog import (
+    OomRecoveryChoice,
+    OomRecoveryRequest,
+    REDUCE_CTX as OOM_REDUCE_CTX,
+    SMALLER_MODEL as OOM_SMALLER_MODEL,
+    ask_gpu_recovery,
+)
 from speaker_transcriber.ui.settings_dialog import SettingsDialog
 from speaker_transcriber.ui.text_search import SearchableTextPanel
 from speaker_transcriber.ui.transcript_panel import TranscriptPanel
@@ -2317,6 +2324,8 @@ class MainWindow(QMainWindow):
         self.pdf_export_worker.summary_ready.connect(self._on_pdf_summary_ready)
         self.pdf_export_worker.completed.connect(self._pdf_export_completed)
         self.pdf_export_worker.failed.connect(self._pdf_export_failed)
+        self.pdf_export_worker.cancelled.connect(self._pdf_export_cancelled)
+        self.pdf_export_worker.oom_detected.connect(self._on_notes_out_of_memory)
         self.pdf_export_worker.start()
 
     def _on_pdf_chunk(self, text: str) -> None:
@@ -2392,6 +2401,8 @@ class MainWindow(QMainWindow):
         self.summary_worker.section_break.connect(self._on_summary_section_break)
         self.summary_worker.completed.connect(self._summary_completed)
         self.summary_worker.failed.connect(self._summary_failed)
+        self.summary_worker.cancelled.connect(self._summary_cancelled)
+        self.summary_worker.oom_detected.connect(self._on_notes_out_of_memory)
         self.summary_worker.start()
 
     def _on_summary_progress(self, update: object) -> None:
@@ -2435,6 +2446,74 @@ class MainWindow(QMainWindow):
         self.progress_bar.setValue(0)
         self._set_stage_status("Summary failed")
         self._set_busy(False)
+
+    def _summary_cancelled(self) -> None:
+        self.progress_bar.setValue(0)
+        self._set_stage_status("Summary stopped")
+        self._set_busy(False)
+        self.notifications.show_message(
+            "Notes stopped after the GPU ran out of memory",
+            kind="warning",
+        )
+
+    def _pdf_export_cancelled(self) -> None:
+        self._pdf_streaming_summary = False
+        self.progress_bar.setValue(0)
+        self._set_stage_status("PDF export stopped")
+        self._set_busy(False)
+        self.notifications.show_message(
+            "PDF export stopped after the GPU ran out of memory",
+            kind="warning",
+        )
+
+    def _on_notes_out_of_memory(self, request: object) -> None:
+        """Resolve a GPU out-of-memory pause from the notes worker."""
+        worker = self.sender()
+        if not isinstance(request, OomRecoveryRequest) or worker is None:
+            return
+        choice = self._saved_oom_choice(request)
+        if choice is None:
+            choice = ask_gpu_recovery(request, self)
+        else:
+            self.log_output.appendPlainText(
+                f"GPU out of memory. Applying the saved recovery option "
+                f"'{self.settings.ollama_oom_policy}'."
+            )
+        self._apply_oom_choice(choice)
+        worker.provide_recovery(choice)
+
+    def _saved_oom_choice(self, request: OomRecoveryRequest) -> OomRecoveryChoice | None:
+        """The remembered option, when it is still usable for this failure."""
+        policy = str(self.settings.ollama_oom_policy or "")
+        if policy == OOM_REDUCE_CTX and request.reduced_num_ctx:
+            return OomRecoveryChoice(
+                action=OOM_REDUCE_CTX,
+                num_ctx=request.reduced_num_ctx,
+                always=True,
+            )
+        if policy == OOM_SMALLER_MODEL and request.smaller_model:
+            return OomRecoveryChoice(
+                action=OOM_SMALLER_MODEL,
+                model_name=request.smaller_model,
+                always=True,
+            )
+        return None
+
+    def _apply_oom_choice(self, choice: OomRecoveryChoice) -> None:
+        changed = False
+        if choice.action == OOM_REDUCE_CTX and choice.num_ctx:
+            self.settings.ollama_num_ctx = int(choice.num_ctx)
+            self._set_ctx_slider_value(int(choice.num_ctx))
+            changed = True
+        elif choice.action == OOM_SMALLER_MODEL and choice.model_name:
+            self.settings.ollama_model = str(choice.model_name)
+            self.ollama_model_combo.select_preferred([str(choice.model_name)])
+            changed = True
+        if choice.always and choice.action in (OOM_REDUCE_CTX, OOM_SMALLER_MODEL):
+            self.settings.ollama_oom_policy = choice.action
+            changed = True
+        if changed:
+            self.settings_store.save(self.settings)
 
     def _update_elapsed(self) -> None:
         self.elapsed_label.setText(
