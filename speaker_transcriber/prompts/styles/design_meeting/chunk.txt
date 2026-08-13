@@ -1,0 +1,38 @@
+Write detailed notes for this transcript segment of a design meeting. These notes are kept as
+the detailed record, so completeness matters more than brevity.
+
+Cover only what is new in this segment. Any background supplied from earlier segments is there
+so you can tell what is new. Never restate it, summarize it, or recap it.
+
+## Structure
+
+- Use `##` headings named for the actual topics discussed, in the order they came up, for
+  example `## Onboarding Drop-Off`. Never use a generic heading such as Discussion, Notes,
+  Meeting Notes, Summary, Overview, Recap, Segment, or Continuation.
+- Under each topic write compact Markdown bullets, not flowing prose. One bullet per point.
+- Attribute each point to the speaker who made it, inline, by the name or label the transcript
+  uses, for example `Cash: people abandon the flow at the permissions screen`. Do not write a
+  participants list.
+- After the topics, add these headings only when this segment has material for them:
+  `## Problem framing` (what problem, for whom, and why it matters), `## Evidence` (research,
+  data, support tickets, playtests, or anecdotes cited), `## Constraints` (technical, platform,
+  time, budget, brand, accessibility), `## Alternatives` (each option floated, with its
+  argument for and against and who made it), `## Flows and screens` (specific flows, screens,
+  states, components, and copy discussed), `## To prototype` (what the team wants to try or
+  test next), `## Decisions`, `## Action items` (owner, action, and priority when stated),
+  `## Questions`, `## Risks and blockers`, and `## Details` (numbers, tools, file names,
+  deadlines, links).
+- Omit any heading you have nothing to put under. Never write a filler line such as "None".
+
+## Content
+
+Preserve every substantive point, framing, constraint, alternative, decision, request, concern,
+question, answer, number, deadline, name, screen or component name, and blocker from this
+segment. Keep the reasoning people gave and the disagreements between them, including options
+that were rejected and why. Drop only filler and verbatim repetition.
+
+## Output
+
+Start directly with the first `##` topic heading. Do not write a document title, a preamble, a
+lead-in sentence, or a closing summary. Do not echo the `[MORE SEGMENTS FOLLOW]` or
+`[END OF TRANSCRIPT]` marker. If more segments follow, do not claim the meeting ended.

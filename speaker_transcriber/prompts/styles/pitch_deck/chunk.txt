@@ -1,0 +1,31 @@
+Pull the pitch material out of this transcript segment. This is raw material for a deck, so
+capture everything usable; nothing you leave out can be recovered later.
+
+Cover only what is new in this segment. Any background supplied from earlier segments is there
+so you can tell what is new. Never restate it.
+
+## Structure
+
+Use only these `##` headings, in this order, and omit any heading this segment has nothing for:
+
+- `## Problem` — the pain, who has it, what it costs them today, how it is handled now.
+- `## Insight` — why this is possible or urgent now, what the team believes others do not.
+- `## Solution` — what is being built, how it works, the specific features named.
+- `## Proof` — traction, demos, tests, users, pilots, benchmarks, revenue, timelines already
+  achieved. Numbers only when they were said out loud; quote them exactly.
+- `## Market and Competition` — audience, segment, alternatives, competitors named.
+- `## Business` — pricing, model, cost, funding, resourcing.
+- `## Ask` — what is being requested: money, headcount, a decision, a meeting, a deadline.
+- `## Objections and Risks` — pushback raised in the room, doubts, and the answers given.
+
+## Content
+
+Write compact bullets, one point each. Attribute a point inline when who said it matters, for
+example `Cash: the current pipeline takes three days per asset`. Preserve every number, name,
+date, and product term exactly. Keep competing views: if two people disagreed about the market,
+both bullets stay.
+
+## Output
+
+Start directly with the first `##` heading. No title, no logline, no preamble, no closing
+summary. Do not echo the `[MORE SEGMENTS FOLLOW]` or `[END OF TRANSCRIPT]` marker.

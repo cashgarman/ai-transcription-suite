@@ -31,7 +31,6 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QFileDialog,
     QFrame,
-    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -46,6 +45,7 @@ from PySide6.QtWidgets import (
     QSlider,
     QSpinBox,
     QSplitter,
+    QStackedLayout,
     QStyle,
     QTableWidget,
     QTableWidgetItem,
@@ -96,6 +96,12 @@ from speaker_transcriber.models.model_catalog import (
 )
 from speaker_transcriber.models.summarization import RequirementsSummarizer
 from speaker_transcriber.pipeline.types import ProcessingOptions, ProgressUpdate, TranscriptResult
+from speaker_transcriber.prompts import (
+    DEFAULT_STYLE as DEFAULT_SUMMARY_STYLE,
+    SUMMARY_STYLES,
+    normalize_style,
+    style_display_name,
+)
 from speaker_transcriber.speaker_names import apply_display_names_to_text
 from speaker_transcriber.ui.progress_tooltips import (
     KEEP_COLUMN_KEYS,
@@ -109,6 +115,7 @@ from speaker_transcriber.ui.branding import summit_icon
 from speaker_transcriber.ui.collapsible_section import CollapsibleSection
 from speaker_transcriber.ui.detachable_tab_widget import DetachableTabWidget
 from speaker_transcriber.ui.duration_probe_worker import MediaDurationProbeWorker
+from speaker_transcriber.ui.hazard_progress import HazardProgressBar
 from speaker_transcriber.ui.input_timeline import InputTimelineWidget
 from speaker_transcriber.ui.model_combo import ComboModelItem, ModelComboBox
 from speaker_transcriber.ui.notification import NotificationBanner
@@ -441,6 +448,37 @@ class MainWindow(QMainWindow):
         self.ollama_model_combo.add_models_requested.connect(
             lambda: self._open_add_models("ollama")
         )
+        self.summary_style_combo = QComboBox()
+        style_view = QListView()
+        style_view.setMinimumWidth(260)
+        self.summary_style_combo.setView(style_view)
+        for style in SUMMARY_STYLES:
+            index = self.summary_style_combo.count()
+            self.summary_style_combo.addItem(style.display_name, style.style_id)
+            self.summary_style_combo.setItemData(
+                index,
+                style.description,
+                Qt.ItemDataRole.ToolTipRole,
+            )
+        style_index = self.summary_style_combo.findData(self.settings.summary_style)
+        if style_index < 0:
+            style_index = self.summary_style_combo.findData(DEFAULT_SUMMARY_STYLE)
+        self.summary_style_combo.setCurrentIndex(max(style_index, 0))
+        self.summary_style_combo.currentIndexChanged.connect(
+            self._on_summary_style_changed
+        )
+        self.summary_style_combo.setToolTip(
+            "How the notes are written. Each style has its own prompts and its own "
+            "PDF layout, and each keeps its own saved copy for this recording."
+        )
+        self.summary_style_combo.setMinimumWidth(120)
+        self.summary_style_combo.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+        )
+        self.summary_style_combo.setMinimumContentsLength(10)
+        self.summary_style_combo.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        )
         self.pdf_engine_combo = QComboBox()
         pdf_view = QListView()
         pdf_view.setMinimumWidth(280)
@@ -553,6 +591,10 @@ class MainWindow(QMainWindow):
             1,
         )
         models_row.addWidget(
+            self._stacked_field("Notes style", self.summary_style_combo),
+            1,
+        )
+        models_row.addWidget(
             self._stacked_field("Format PDF notes", self.pdf_engine_combo, "pdf"),
             1,
         )
@@ -605,12 +647,17 @@ class MainWindow(QMainWindow):
         self.summarize_button.setObjectName("primaryButton")
         self.summarize_button.setEnabled(False)
         self.summarize_button.clicked.connect(self._summarize)
+        self.cancel_summary_button = QPushButton("Cancel")
+        self.cancel_summary_button.setEnabled(False)
+        self.cancel_summary_button.setToolTip("Stop the current summarization")
+        self.cancel_summary_button.clicked.connect(self._cancel_summarization)
         action_row.addWidget(self.start_button)
         action_row.addWidget(self.retranscribe_button)
         action_row.addWidget(self.cancel_button)
         action_row.addWidget(settings_button)
         action_row.addStretch()
         action_row.addWidget(self.summarize_button)
+        action_row.addWidget(self.cancel_summary_button)
         action_row.addWidget(self.export_pdf_button)
         action_row.addWidget(self.export_button)
         root.addLayout(action_row)
@@ -621,10 +668,9 @@ class MainWindow(QMainWindow):
         status_layout.setContentsMargins(8, 6, 8, 6)
         status_layout.setSpacing(10)
 
-        self.progress_bar = QProgressBar()
+        self.progress_bar = HazardProgressBar(bar_height=28, autostart=False)
         self.progress_bar.setObjectName("jobProgressBar")
         self.progress_bar.setRange(0, 1000)
-        self.progress_bar.setTextVisible(False)
         self.progress_bar.setToolTip("Processing progress")
         self.progress_bar.setSizePolicy(
             QSizePolicy.Policy.Expanding,
@@ -661,10 +707,20 @@ class MainWindow(QMainWindow):
         self.stage_percent_label.hide()
 
         progress_overlay = QWidget()
+        progress_overlay.setObjectName("jobProgressOverlay")
+        progress_overlay.setAttribute(
+            Qt.WidgetAttribute.WA_TranslucentBackground,
+            True,
+        )
+        progress_overlay.setAttribute(
+            Qt.WidgetAttribute.WA_NoSystemBackground,
+            True,
+        )
         progress_overlay.setAttribute(
             Qt.WidgetAttribute.WA_TransparentForMouseEvents,
             True,
         )
+        progress_overlay.setAutoFillBackground(False)
         overlay_row = QHBoxLayout(progress_overlay)
         overlay_row.setContentsMargins(12, 0, 12, 0)
         overlay_row.setSpacing(8)
@@ -675,15 +731,21 @@ class MainWindow(QMainWindow):
 
         progress_host = QWidget()
         progress_host.setObjectName("jobProgressHost")
+        progress_host.setAttribute(
+            Qt.WidgetAttribute.WA_TranslucentBackground,
+            True,
+        )
+        progress_host.setAutoFillBackground(False)
         progress_host.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Fixed,
         )
-        progress_stack = QGridLayout(progress_host)
+        progress_stack = QStackedLayout(progress_host)
         progress_stack.setContentsMargins(0, 0, 0, 0)
-        progress_stack.setSpacing(0)
-        progress_stack.addWidget(self.progress_bar, 0, 0)
-        progress_stack.addWidget(progress_overlay, 0, 0)
+        progress_stack.setStackingMode(QStackedLayout.StackingMode.StackAll)
+        progress_stack.addWidget(self.progress_bar)
+        progress_stack.addWidget(progress_overlay)
+        progress_stack.setCurrentWidget(progress_overlay)
         self._set_stage_status("Ready")
 
         self.cpu_meter, self.cpu_bar, self.cpu_caption = self._build_status_meter(
@@ -1615,7 +1677,14 @@ class MainWindow(QMainWindow):
             self._set_stage_status("Cancellation requested; waiting for a safe boundary…")
             self.cancel_button.setEnabled(False)
 
+    def _cancel_summarization(self) -> None:
+        if self.summary_worker and self.summary_worker.isRunning():
+            self.summary_worker.request_cancel()
+            self._set_stage_status("Cancellation requested; waiting for a safe boundary…")
+            self.cancel_summary_button.setEnabled(False)
+
     def _on_progress(self, update: ProgressUpdate) -> None:
+        self.progress_bar.start()
         self.progress_bar.setValue(round(update.progress * 1000))
         self._set_stage_status(update.message, update.stage_fraction, update.stage)
         if update.vram_total_mb:
@@ -1676,9 +1745,17 @@ class MainWindow(QMainWindow):
         summarizing: bool = False,
         exporting_pdf: bool = False,
     ) -> None:
+        busy = busy or bool(self.worker and self.worker.isRunning())
+        summarizing = summarizing or bool(
+            self.summary_worker and self.summary_worker.isRunning()
+        )
+        exporting_pdf = exporting_pdf or bool(
+            self.pdf_export_worker and self.pdf_export_worker.isRunning()
+        )
         blocked = busy or summarizing or exporting_pdf
         self.start_button.setEnabled(not blocked)
         self.cancel_button.setEnabled(busy)
+        self.cancel_summary_button.setEnabled(summarizing)
         self._update_cache_controls(blocked)
         has_result = self.result is not None
         self.export_button.setEnabled(not blocked and has_result)
@@ -1689,10 +1766,14 @@ class MainWindow(QMainWindow):
         self.alignment_combo.setEnabled(not blocked)
         self.diarization_combo.setEnabled(not blocked)
         self.ollama_model_combo.setEnabled(not blocked)
+        self.summary_style_combo.setEnabled(not blocked)
         self.pdf_engine_combo.setEnabled(not blocked)
         self.pdf_theme_combo.setEnabled(not blocked)
         self.ollama_ctx_slider.setEnabled(not blocked)
-        if not blocked:
+        if blocked:
+            self.progress_bar.start()
+        else:
+            self.progress_bar.stop()
             self.elapsed_timer.stop()
 
     def _apply_session_speaker_names(self, sources: list[Path] | None = None) -> None:
@@ -2226,13 +2307,35 @@ class MainWindow(QMainWindow):
         paths = [Path(path) for path in files if str(path).strip()]
         return paths or None
 
+    def _current_summary_style(self) -> str:
+        return normalize_style(
+            self.summary_style_combo.currentData() or self.settings.summary_style
+        )
+
+    def _on_summary_style_changed(self, _index: int = 0) -> None:
+        style = self._current_summary_style()
+        self._persist_combo_setting("summary_style", style)
+        self.summary_markdown = ""
+        self.summary_view.clear()
+        self.summary_panel.clear_search()
+        self._restore_cached_summary()
+        if not self.summary_markdown:
+            self.summary_view.setPlaceholderText(
+                f"No {style_display_name(style)} notes for this recording yet. "
+                "Click Summarize to write them."
+            )
+        self._update_summarize_button()
+
     def _has_stored_summary(self) -> bool:
         if is_usable_summary_markdown(self.summary_markdown):
             return True
         if self._current_summary_markdown():
             return True
         source = self._summary_cache_source()
-        return bool(source) and self.transcript_cache.summary_exists(source)
+        return bool(source) and self.transcript_cache.summary_exists(
+            source,
+            self._current_summary_style(),
+        )
 
     def _apply_summary_markdown(self, markdown: str) -> None:
         self.summary_markdown = markdown.strip()
@@ -2250,7 +2353,10 @@ class MainWindow(QMainWindow):
         cache_source = sources or self._summary_cache_source()
         if not cache_source:
             return
-        stored = self.transcript_cache.load_summary(cache_source)
+        stored = self.transcript_cache.load_summary(
+            cache_source,
+            self._current_summary_style(),
+        )
         if not stored or not is_usable_summary_markdown(stored):
             return
         if self.result is not None:
@@ -2268,7 +2374,11 @@ class MainWindow(QMainWindow):
         if not is_usable_summary_markdown(text):
             return
         try:
-            self.transcript_cache.save_summary(source, text)
+            self.transcript_cache.save_summary(
+                source,
+                text,
+                self._current_summary_style(),
+            )
         except OSError as exc:
             self.log_output.appendPlainText(f"Failed to save summary cache: {exc}")
             return
@@ -2281,13 +2391,15 @@ class MainWindow(QMainWindow):
             selected_ollama
         )
         stored = self._has_stored_summary()
+        style_name = style_display_name(self._current_summary_style())
         self.summarize_button.setText("Re-summarize" if stored else "Summarize")
         self.summarize_button.setEnabled(not blocked and has_result and ollama_ready)
         if ollama_ready:
             self.summarize_button.setToolTip(
-                "Replace the stored meeting notes for this recording."
+                f"Replace the stored {style_name} notes for this recording."
                 if stored
-                else "Write meeting notes from the transcript using the selected Ollama model."
+                else f"Write {style_name} notes from the transcript using the "
+                "selected Ollama model."
             )
 
     def _current_summary_markdown(self) -> str:
@@ -2367,6 +2479,7 @@ class MainWindow(QMainWindow):
             self._current_ollama_num_ctx(),
             str(self.pdf_engine_combo.currentData() or self.settings.pdf_engine),
             str(self.pdf_theme_combo.currentData() or self.settings.pdf_theme),
+            self._current_summary_style(),
             self,
         )
         self.pdf_export_worker.progress.connect(self._on_summary_progress)
@@ -2447,6 +2560,7 @@ class MainWindow(QMainWindow):
             render_summary_source(self.result),
             str(model_name),
             self._current_ollama_num_ctx(),
+            self._current_summary_style(),
             self,
         )
         self.summary_worker.progress.connect(self._on_summary_progress)
@@ -2463,6 +2577,7 @@ class MainWindow(QMainWindow):
 
         if not isinstance(update, SummarizationProgress):
             return
+        self.progress_bar.start()
         self.progress_bar.setValue(round(update.fraction * 1000))
         self._set_stage_status(update.message, update.fraction)
 
@@ -2502,9 +2617,24 @@ class MainWindow(QMainWindow):
         self._set_busy(False)
 
     def _summary_cancelled(self) -> None:
+        user_cancelled = bool(
+            self.summary_worker is not None
+            and self.summary_worker.cancel_event.is_set()
+        )
         self.progress_bar.setValue(0)
-        self._set_stage_status("Summary stopped")
+        self._set_stage_status(
+            "Summary cancelled" if user_cancelled else "Summary stopped"
+        )
+        if is_usable_summary_markdown(self.summary_markdown):
+            self._apply_summary_markdown(self.summary_markdown)
+        else:
+            self.summary_view.setPlainText(
+                "Summary cancelled." if user_cancelled else "Summary stopped."
+            )
         self._set_busy(False)
+        if user_cancelled:
+            self.notifications.show_message("Summarization cancelled", kind="info")
+            return
         self.notifications.show_message(
             "Notes stopped after the GPU ran out of memory",
             kind="warning",
@@ -2615,6 +2745,7 @@ class MainWindow(QMainWindow):
             if answer != QMessageBox.StandardButton.Yes:
                 event.ignore()
                 return
+            self.summary_worker.request_cancel()
             self.summary_worker.wait(5000)
         if self.pdf_export_worker and self.pdf_export_worker.isRunning():
             answer = QMessageBox.question(

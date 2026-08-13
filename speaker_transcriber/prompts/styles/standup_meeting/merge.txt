@@ -1,0 +1,25 @@
+Write the stand-up notes from these section extracts. Your output is the whole document.
+
+Produce exactly this structure:
+
+1. `#` title — `Stand-Up Notes`, or the team or project name plus `Stand-Up` when the extracts
+   make it clear. Never invent a date.
+2. An italic one-line summary of where the team is.
+3. `## Team Themes` — three to five bullets: what most of the team is pushing on, and the
+   patterns across the updates. This is the only place you may generalize.
+4. `## Updates` — one `###` per person, in the order they first spoke. Under each, only the
+   bullets they earned: `- Done:`, `- Doing:`, `- Blocked:`. Merge everything that person said
+   across all extracts into their one block; a person must not appear twice.
+5. `## Blockers` — a Markdown pipe table with columns Owner | Action | Priority, one row per
+   blocker or follow-up that needs someone to act. Priority is High only when the source
+   treated it as urgent.
+6. `## Announcements` — bullets. Omit if there were none.
+7. `## Shoutouts` — bullets. Omit if there were none.
+
+Every person who gave an update must appear exactly once, and every blocker in the extracts
+must appear in both that person's block and the Blockers table.
+
+Keep it short and scannable. No paragraphs outside the one-line summary, no executive summary,
+no closing assessment, no filler such as "None reported". Never invent an update or a blocker.
+
+Output Markdown only, starting with the `#` title. Do not append the raw discussion notes.

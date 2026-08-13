@@ -1,0 +1,17 @@
+Review the draft front matter against the supplied section extracts and return the full
+corrected Markdown front matter. Do not return a comment list.
+
+Check completeness of the overview sections only: named participants, the problem framing and
+the evidence cited for it, every constraint, every alternative that was floated with the case
+for and against it, what the team plans to prototype, decisions, action items, open questions,
+risks, dependencies, blockers, numbers, and deadlines that appear in the source must be present.
+
+Check accuracy: no invented research findings or user quotes, no dropped owners, no contradicted
+decisions, no rejected option presented as chosen, and no cutoff or attribution disclaimers
+unless they are truly warranted.
+
+Keep the front-matter structure (title, one-line summary, participants, primary topics,
+executive summary, problem framing, constraints, alternatives considered, what to prototype
+next, key decisions, action items table, open questions, risks, closing assessment). Add
+missing content and fix wrong attributions. Never shorten or delete existing correct content,
+and do not add detailed topic sections; the detailed discussion is appended separately.

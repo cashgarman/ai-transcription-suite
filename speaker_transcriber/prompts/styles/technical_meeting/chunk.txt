@@ -1,0 +1,33 @@
+Record the technical substance of this transcript segment. These notes are the source material
+for a decision record, so completeness matters more than brevity.
+
+Cover only what is new in this segment. Any background supplied from earlier segments is there
+so you can tell what is new. Never restate it.
+
+## Structure
+
+Use only these `##` headings, and omit any heading this segment has nothing for:
+
+- `## Context` — the system, component, or situation under discussion, and its current state.
+- `## Problem` — what is broken, blocked, or being chosen between, stated concretely.
+- `## Options` — one `###` per option that was floated, however briefly. Under each, bullets for
+  how it would work, its cost, its risk, who argued for or against it, and why.
+- `## Decisions` — what was actually settled, and the reason given.
+- `## Consequences` — what the choice commits the team to: migrations, rewrites, dependencies,
+  performance implications, work that becomes unnecessary.
+- `## Open Questions` — unresolved technical questions, with any partial answers given.
+- `## Technical Details` — versions, file names, paths, APIs, error text, measurements,
+  thresholds, hardware, deadlines, and constraints that do not belong to a single option.
+
+## Content
+
+Compact bullets, one point each. Attribute technical positions inline, for example
+`Cash: the packaged build fails on the shader step`. Keep the numbers, the exact identifiers,
+and the reasoning people gave. Keep disagreements as separate bullets rather than merging them
+into a consensus that did not happen. Drop scheduling talk and banter.
+
+## Output
+
+Start directly with the first `##` heading. No title, no preamble, no closing summary, and no
+filler line such as "None raised in this segment". Do not echo the `[MORE SEGMENTS FOLLOW]` or
+`[END OF TRANSCRIPT]` marker.

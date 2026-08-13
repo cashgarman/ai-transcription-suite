@@ -189,10 +189,11 @@ def test_export_meeting_pdf_writes_pdf_header(tmp_path) -> None:
 def test_export_meeting_pdf_dispatches_weasyprint(monkeypatch, tmp_path) -> None:
     called: dict[str, object] = {}
 
-    def fake_export(document, path, theme="light") -> None:
+    def fake_export(document, path, theme="light", style=None) -> None:
         called["document"] = document
         called["path"] = path
         called["theme"] = theme
+        called["style"] = style
 
     monkeypatch.setattr(
         "speaker_transcriber.export.weasyprint_exporter.weasyprint_available",
@@ -204,9 +205,10 @@ def test_export_meeting_pdf_dispatches_weasyprint(monkeypatch, tmp_path) -> None
     )
     document = parse_meeting_markdown(COMPLETE_MARKDOWN)
     path = tmp_path / "meeting.pdf"
-    export_meeting_pdf(document, path, engine="weasyprint")
+    export_meeting_pdf(document, path, engine="weasyprint", style="pitch_deck")
     assert called["path"] == path
     assert called["document"] is document
+    assert called["style"] == "pitch_deck"
     assert not path.exists()
 
 
@@ -224,7 +226,7 @@ def test_weasyprint_falls_back_to_reportlab_when_unavailable(monkeypatch, tmp_pa
 
 
 def test_weasyprint_runtime_error_falls_back_to_reportlab(monkeypatch, tmp_path) -> None:
-    def boom(document, path, theme="light") -> None:
+    def boom(document, path, theme="light", style=None) -> None:
         raise RuntimeError(
             "WeasyPrint is not available. Install it and its native libraries "
             "(Pango/Cairo/GTK), or switch Format PDF notes to ReportLab."
@@ -347,10 +349,10 @@ def test_weasyprint_dark_theme_uses_dark_page() -> None:
     document = parse_meeting_markdown(COMPLETE_MARKDOWN)
     dark = meeting_document_html(document, theme="dark")
     light = meeting_document_html(document)
-    assert 'class="theme-dark"' in dark
+    assert "theme-dark" in dark
     assert "#12181C" in dark
     assert "#F4F7F8" in dark
-    assert 'class="theme-light"' in light
+    assert "theme-light" in light
     assert "#12181C" not in light
 
 
@@ -359,7 +361,7 @@ def test_weasyprint_unknown_theme_falls_back_to_light() -> None:
 
     document = parse_meeting_markdown(COMPLETE_MARKDOWN)
     html = meeting_document_html(document, theme="neon")
-    assert 'class="theme-light"' in html
+    assert "theme-light" in html
 
 
 def test_reportlab_lists_render_without_list_flowable() -> None:
@@ -411,6 +413,198 @@ def test_export_meeting_pdf_dark_theme_writes_pdf(tmp_path) -> None:
     data = path.read_bytes()
     assert data.startswith(b"%PDF")
     assert len(data) > 500
+
+
+PITCH_MARKDOWN = """
+# Summit Pitch
+
+*Local transcription for studios that cannot upload audio.*
+
+## Problem
+
+- Studios cannot send audio to the cloud.
+
+## Ask
+
+- Two engineers for one quarter.
+"""
+
+NEWSLETTER_MARKDOWN = """
+# Offline notes are shipping
+
+*What changed for the team this week.*
+
+## Highlights
+
+The pipeline now runs without a network.
+
+## What's Next
+
+- Package the installer.
+"""
+
+SCRIPT_MARKDOWN = """
+**Host A:** What shipped this week?
+
+**Host B:** Offline notes, finally.
+"""
+
+
+def render_html(markdown: str, style: str, theme: str = "light") -> str:
+    from speaker_transcriber.export.weasyprint_exporter import meeting_document_html
+
+    return meeting_document_html(
+        parse_meeting_markdown(markdown),
+        theme=theme,
+        style=style,
+    )
+
+
+def test_layout_registry_covers_every_style() -> None:
+    from speaker_transcriber.export.pdf_layout import LAYOUTS, layout_for
+    from speaker_transcriber.prompts import style_ids
+
+    assert set(LAYOUTS) == set(style_ids())
+    assert layout_for("not-a-style").kind == layout_for("meeting_summary").kind
+
+
+def test_style_tints_the_accent_but_keeps_the_theme() -> None:
+    from speaker_transcriber.export.pdf_theme import palette_for
+
+    meeting = palette_for("light", "meeting_summary")
+    art = palette_for("light", "art_meeting")
+    dark_art = palette_for("dark", "art_meeting")
+    assert meeting.accent != art.accent
+    assert meeting.page == art.page
+    assert dark_art.page != art.page
+    assert dark_art.accent != art.accent
+
+
+def test_weasyprint_meeting_style_uses_a_cover_page() -> None:
+    html = render_html(COMPLETE_MARKDOWN, "meeting_summary")
+    assert "layout-meeting_cover" in html
+    assert "class='cover'" in html
+    assert "break-after: page" in html
+    assert "MEETING NOTES" in html
+
+
+def test_weasyprint_pitch_style_uses_landscape_slides() -> None:
+    html = render_html(PITCH_MARKDOWN, "pitch_deck")
+    assert "layout-pitch_slides" in html
+    assert "letter landscape" in html
+    assert ".section { break-before: page; }" in html
+    assert "class='toc'" not in html
+    assert '"Slide " counter(page)' in html
+
+
+def test_weasyprint_newsletter_uses_a_masthead_not_a_cover() -> None:
+    internal = render_html(NEWSLETTER_MARKDOWN, "internal_newsletter")
+    external = render_html(NEWSLETTER_MARKDOWN, "external_newsletter")
+    assert "layout-newsletter" in internal
+    assert "class='masthead'" in internal
+    assert "class='cover'" not in internal
+    assert "TEAM UPDATE" in internal
+    assert "CUSTOMER UPDATE" in external
+
+
+def test_weasyprint_script_styles_keep_the_first_spoken_line() -> None:
+    transcript = render_html(SCRIPT_MARKDOWN, "pure_transcription")
+    dialogue = render_html(SCRIPT_MARKDOWN, "ai_voiced_dialogue")
+    assert "layout-transcript" in transcript
+    assert "class='line'" in transcript
+    assert "What shipped this week?" in transcript
+    assert "**" not in transcript
+    assert "class='legend'" in dialogue
+    assert "class='legend'" not in transcript
+
+
+def test_reportlab_pitch_pages_are_landscape(tmp_path) -> None:
+    from reportlab.lib.pagesizes import letter
+
+    from speaker_transcriber.export.pdf_layout import layout_for
+    import speaker_transcriber.export.pdf_exporter as pdf_exporter
+
+    width, height = pdf_exporter._page_size(layout_for("pitch_deck"))
+    assert width > height
+    assert (width, height) == (letter[1], letter[0])
+    assert pdf_exporter._page_size(layout_for("meeting_summary")) == letter
+
+    path = tmp_path / "pitch.pdf"
+    export_meeting_pdf(
+        parse_meeting_markdown(PITCH_MARKDOWN),
+        path,
+        style="pitch_deck",
+    )
+    assert path.read_bytes().startswith(b"%PDF")
+
+
+def test_reportlab_writes_every_style(tmp_path) -> None:
+    from speaker_transcriber.prompts import style_ids
+
+    for style in style_ids():
+        path = tmp_path / f"{style}.pdf"
+        export_meeting_pdf(
+            parse_meeting_markdown(COMPLETE_MARKDOWN),
+            path,
+            theme="dark",
+            style=style,
+        )
+        assert path.read_bytes().startswith(b"%PDF")
+
+
+def make_pdf_worker(tmp_path, markdown: str, style: str):
+    from speaker_transcriber.ui.worker import PdfExportWorker
+
+    class FakeSignal:
+        def __init__(self) -> None:
+            self.payloads: list[object] = []
+
+        def emit(self, *payload: object) -> None:
+            self.payloads.append(payload)
+
+    worker = PdfExportWorker.__new__(PdfExportWorker)
+    worker.destination = str(tmp_path / "notes.pdf")
+    worker.transcript_text = "Alex: we shipped."
+    worker.existing_markdown = markdown
+    worker.model_name = ""
+    worker.num_ctx = 0
+    worker.pdf_engine = "reportlab"
+    worker.pdf_theme = "light"
+    worker.style = style
+    for name in ("progress", "chunk", "section_break", "summary_ready", "completed"):
+        setattr(worker, name, FakeSignal())
+    return worker
+
+
+def test_non_meeting_styles_skip_the_format_pass(monkeypatch, tmp_path) -> None:
+    exported: dict[str, object] = {}
+
+    def fake_export(document, path, engine="reportlab", theme="light", style=None):
+        exported["style"] = style
+        exported["document"] = document
+
+    monkeypatch.setattr(
+        "speaker_transcriber.export.pdf_exporter.export_meeting_pdf",
+        fake_export,
+    )
+    document = parse_meeting_markdown(NEWSLETTER_MARKDOWN)
+    assert document.needs_format_pass()
+
+    worker = make_pdf_worker(tmp_path, NEWSLETTER_MARKDOWN, "internal_newsletter")
+    worker._export()
+    assert exported["style"] == "internal_newsletter"
+    assert exported["document"].title == "Offline notes are shipping"
+    assert worker.summary_ready.payloads == [(NEWSLETTER_MARKDOWN.strip(),)]
+
+
+def test_meeting_styles_still_ask_for_the_format_pass(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(
+        "speaker_transcriber.export.pdf_exporter.export_meeting_pdf",
+        lambda *args, **kwargs: None,
+    )
+    worker = make_pdf_worker(tmp_path, NEWSLETTER_MARKDOWN, "meeting_summary")
+    with pytest.raises(RuntimeError, match="need formatting"):
+        worker._export()
 
 
 def test_export_meeting_pdf_weasyprint_writes_pdf(tmp_path) -> None:

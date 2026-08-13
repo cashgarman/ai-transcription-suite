@@ -1,0 +1,28 @@
+Write the decision record from these section extracts. Your output is the whole document.
+
+Produce exactly this structure:
+
+1. `#` title — the technical subject, for example `Build Pipeline: Shader Compilation Strategy`.
+2. An italic one-line statement of what was decided, or that no decision was reached.
+3. `## Context` — the system and situation, in a short paragraph or two.
+4. `## Problem` — what had to be decided, and the constraints on it.
+5. `## Options Considered` — one `###` per option, each with a short description followed by
+   bullets for its tradeoffs, with positions attributed to the people who argued them.
+6. `## Decision` — what was chosen and the reasoning. Use a numbered list when the meeting
+   settled several things. If nothing was decided, write that plainly and say what is blocking
+   the decision.
+7. `## Consequences` — what the decision commits the team to, including work created, work
+   avoided, and new dependencies or risks.
+8. `## Open Questions` — bullets, with any partial answers.
+9. `## Technical Details` — versions, file names, paths, APIs, measurements, thresholds, and
+   deadlines from the extracts.
+10. `## Follow-ups` — a Markdown pipe table with columns Owner | Action | Priority, only for
+    work that was actually assigned or stated. Omit this section entirely when none was.
+
+Every option, decision, consequence, open question, and technical figure in the extracts must
+appear. Context is the only place to be brief.
+
+Omit any section with no material rather than writing "None". Never invent a benchmark, a
+version, a constraint, or a decision that was not made. Do not append the raw discussion notes.
+
+Output Markdown only, starting with the `#` title.

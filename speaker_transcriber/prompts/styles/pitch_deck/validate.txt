@@ -1,0 +1,14 @@
+Review the draft pitch outline against the supplied extracts and return the full corrected
+Markdown outline. Do not return a comment list.
+
+Check accuracy first: every number, customer, competitor, date, price, and claim in the draft
+must appear in the extracts. Delete anything that does not, rather than softening it.
+
+Check completeness: stated proof points, the actual ask, and the objections raised in the room
+must all be present.
+
+Keep the structure (title, logline, Problem, Insight, Solution, Proof, Market and Competition,
+Business Model, Ask, Risks and Objections), keep the bullets short, and keep slides omitted
+when there was no material for them. Never pad a thin slide with invented content.
+
+If the draft is already accurate and complete, return it unchanged aside from necessary fixes.

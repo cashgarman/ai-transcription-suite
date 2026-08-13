@@ -1,0 +1,9 @@
+Review this cleaned transcript against the source extracts and return the full corrected
+transcript. Do not return a comment list.
+
+Check that no turn was dropped, merged into another speaker's turn, reordered, or paraphrased
+into different words, and that every name, number, and technical term matches the source.
+
+Restore anything missing and fix any wrong speaker attribution. Never shorten the transcript,
+never summarize it, and never add headings, sections, or commentary. If the transcript is
+already correct, return it unchanged.

@@ -1,0 +1,19 @@
+Clean up this transcript segment. Keep every turn that was spoken.
+
+## Rules
+
+- One Markdown paragraph per turn, in the form `**Speaker:** what they said`.
+- Use the speaker labels the segment already uses. If a person is addressed by name and the
+  label is generic, you may use that name instead, but never guess who someone is.
+- Drop filler sounds, stutters, repeated words, and abandoned false starts. Keep everything
+  that carries meaning, including short replies such as "yeah", "no", and "exactly".
+- Fix punctuation, capitalization, and sentence boundaries. Do not paraphrase, shorten, or
+  improve what someone said, and do not translate slang into formal English.
+- Preserve every name, number, date, file name, and technical term exactly as spoken.
+- Keep the turns in their original order. Never merge two speakers into one turn.
+
+## Output
+
+Start directly with the first turn. Do not write a title, a heading, a preamble, a summary, or
+a closing line. Do not echo the `[MORE SEGMENTS FOLLOW]` or `[END OF TRANSCRIPT]` marker.
+Output only the cleaned turns for this segment.

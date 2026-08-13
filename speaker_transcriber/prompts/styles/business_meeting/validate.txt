@@ -1,0 +1,20 @@
+Review the draft front matter against the supplied section extracts and return the full
+corrected Markdown front matter. Do not return a comment list.
+
+Check the numbers first: every figure in the draft must match the source exactly, with the same
+unit and period, and must still be marked as an actual, a forecast, or an estimate the way the
+source marked it. Delete any figure that does not appear in the source, and restore any figure
+the draft dropped.
+
+Check completeness: named participants, goals and their measures, budget and cost, every
+stakeholder and what they want, every date and milestone, decisions, action items and
+commitments with their owners, open questions, risks, dependencies, and blockers.
+
+Check accuracy: no invented commitments, no dropped owners, no contradicted decisions, and no
+cutoff or attribution disclaimers unless they are truly warranted.
+
+Keep the front-matter structure (title, one-line summary, participants, primary topics,
+executive summary, goals and KPIs, numbers and budget, stakeholders, timeline and milestones,
+key decisions, action items table, open questions, risks, closing assessment). Never shorten or
+delete existing correct content, and do not add detailed topic sections; the detailed
+discussion is appended separately.

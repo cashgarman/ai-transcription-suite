@@ -10,6 +10,7 @@ from speaker_transcriber.audio.sources import MediaSource
 from speaker_transcriber.config import app_data_dir
 from speaker_transcriber.export.json_exporter import from_json_dict, to_json_dict
 from speaker_transcriber.pipeline.types import TranscriptResult
+from speaker_transcriber.prompts import DEFAULT_STYLE, normalize_style, style_ids
 from speaker_transcriber.speaker_names import (
     apply_cached_speaker_names,
     custom_speaker_names,
@@ -35,14 +36,38 @@ class TranscriptCache:
     def speakers_path_for(self, source: Path | list[Path]) -> Path:
         return self.directory / f"{self._cache_stem(source)}.speakers.json"
 
-    def summary_path_for(self, source: Path | list[Path]) -> Path:
+    def summary_path_for(
+        self,
+        source: Path | list[Path],
+        style: str | None = None,
+    ) -> Path:
+        stem = self._cache_stem(source)
+        return self.directory / f"{stem}.summary.{normalize_style(style)}.md"
+
+    def legacy_summary_path_for(self, source: Path | list[Path]) -> Path:
+        """Where summaries lived before styles existed: always meeting notes."""
         return self.directory / f"{self._cache_stem(source)}.summary.md"
+
+    def _summary_paths(
+        self,
+        source: Path | list[Path],
+        style: str | None = None,
+    ) -> list[Path]:
+        """Every file that could hold this style's summary, newest naming first."""
+        paths = [self.summary_path_for(source, style)]
+        if normalize_style(style) == DEFAULT_STYLE:
+            paths.append(self.legacy_summary_path_for(source))
+        return paths
 
     def exists(self, source: Path | list[Path]) -> bool:
         return self.path_for(source).is_file()
 
-    def summary_exists(self, source: Path | list[Path]) -> bool:
-        return self.summary_path_for(source).is_file()
+    def summary_exists(
+        self,
+        source: Path | list[Path],
+        style: str | None = None,
+    ) -> bool:
+        return any(path.is_file() for path in self._summary_paths(source, style))
 
     def load(self, source: Path | list[Path]) -> TranscriptResult | None:
         path = self.path_for(source)
@@ -90,23 +115,36 @@ class TranscriptCache:
         os.replace(temp_path, path)
         self._save_speaker_names(cache_source, result.speakers)
 
-    def load_summary(self, source: Path | list[Path]) -> str | None:
-        path = self.summary_path_for(source)
-        if not path.is_file():
-            return None
-        try:
-            text = path.read_text(encoding="utf-8").strip()
-        except OSError as exc:
-            LOGGER.warning("Failed to load summary cache %s: %s", path, exc)
-            return None
-        return text or None
+    def load_summary(
+        self,
+        source: Path | list[Path],
+        style: str | None = None,
+    ) -> str | None:
+        for path in self._summary_paths(source, style):
+            if not path.is_file():
+                continue
+            try:
+                text = path.read_text(encoding="utf-8").strip()
+            except OSError as exc:
+                LOGGER.warning("Failed to load summary cache %s: %s", path, exc)
+                return None
+            if text:
+                return text
+        return None
 
-    def save_summary(self, source: Path | list[Path], markdown: str) -> None:
-        path = self.summary_path_for(source)
+    def save_summary(
+        self,
+        source: Path | list[Path],
+        markdown: str,
+        style: str | None = None,
+    ) -> None:
+        paths = self._summary_paths(source, style)
+        path = paths[0]
         text = (markdown or "").strip()
         if not text:
-            if path.is_file():
-                path.unlink()
+            for stale in paths:
+                if stale.is_file():
+                    stale.unlink()
             return
         self.directory.mkdir(parents=True, exist_ok=True)
         payload = text + "\n"
@@ -120,6 +158,9 @@ class TranscriptCache:
             handle.write(payload)
             temp_path = handle.name
         os.replace(temp_path, path)
+        for superseded in paths[1:]:
+            if superseded.is_file():
+                superseded.unlink()
 
     def delete(self, source: Path | list[Path]) -> None:
         path = self.path_for(source)
@@ -128,9 +169,16 @@ class TranscriptCache:
         speakers_path = self.speakers_path_for(source)
         if speakers_path.is_file():
             speakers_path.unlink()
-        summary_path = self.summary_path_for(source)
-        if summary_path.is_file():
+        for summary_path in self.summary_paths(source):
             summary_path.unlink()
+
+    def summary_paths(self, source: Path | list[Path]) -> list[Path]:
+        """Every stored summary for this recording, whatever style wrote it."""
+        found = [self.legacy_summary_path_for(source)]
+        found.extend(
+            self.summary_path_for(source, style_id) for style_id in style_ids()
+        )
+        return [path for path in found if path.is_file()]
 
     def _load_speaker_names(self, source: Path | list[Path]) -> dict[str, str]:
         path = self.speakers_path_for(source)

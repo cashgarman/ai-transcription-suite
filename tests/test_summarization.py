@@ -1,5 +1,8 @@
+import threading
+
 import pytest
 
+from speaker_transcriber.errors import ProcessingCancelled
 from speaker_transcriber.models.summarization import (
     EXTRACT_PREDICT_FRACTION,
     FRONT_MATTER_PREDICT_FRACTION,
@@ -9,7 +12,12 @@ from speaker_transcriber.models.summarization import (
     extract_context_length,
     is_out_of_memory_error,
 )
-from speaker_transcriber.prompts import get_prompt, load_prompts
+from speaker_transcriber.prompts import (
+    DEFAULT_STYLE,
+    get_prompt,
+    get_style,
+    load_prompts,
+)
 
 
 FRONT_MATTER = (
@@ -54,10 +62,13 @@ class FailingClient:
 def make_summarizer(
     client: object,
     num_ctx: int = 8192,
+    style: str = DEFAULT_STYLE,
 ) -> RequirementsSummarizer:
     summarizer = RequirementsSummarizer.__new__(RequirementsSummarizer)
     summarizer.model_name = "test-model"
     summarizer.num_ctx = num_ctx
+    summarizer.style = get_style(style)
+    summarizer.cancel_event = None
     summarizer.client = client
     return summarizer
 
@@ -455,6 +466,108 @@ def test_summarize_wraps_other_failures() -> None:
     summarizer = make_summarizer(client, num_ctx=8192)
     with pytest.raises(RuntimeError, match="Could not summarize locally"):
         summarizer.summarize("Alex talks about the grid engine.")
+
+
+def test_generate_stream_stops_when_already_cancelled() -> None:
+    load_prompts()
+    cancel = threading.Event()
+    cancel.set()
+    client = RecordingClient(["Hello"])
+    summarizer = make_summarizer(client, num_ctx=8192)
+    summarizer.cancel_event = cancel
+    with pytest.raises(ProcessingCancelled):
+        summarizer._generate_stream("prompt", 100)
+    assert client.calls == []
+
+
+def test_generate_stream_stops_mid_response() -> None:
+    load_prompts()
+    cancel = threading.Event()
+
+    class CancellingClient:
+        def generate(self, **kwargs):
+            yield FakeChunk(response="Hello ")
+            cancel.set()
+            yield FakeChunk(response="world")
+
+    summarizer = make_summarizer(CancellingClient(), num_ctx=8192)
+    summarizer.cancel_event = cancel
+    with pytest.raises(ProcessingCancelled):
+        summarizer._generate_stream("prompt", 100)
+
+
+def test_summarize_propagates_cancellation() -> None:
+    load_prompts()
+    cancel = threading.Event()
+    cancel.set()
+    summarizer = make_summarizer(RecordingClient(["ok"]), num_ctx=8192)
+    summarizer.cancel_event = cancel
+    with pytest.raises(ProcessingCancelled):
+        summarizer.summarize("Alex talks about the grid engine.")
+
+
+def test_the_style_picks_the_prompt_pack() -> None:
+    load_prompts()
+    client = RecordingClient(["Slide notes"])
+    summarizer = make_summarizer(client, style="pitch_deck")
+    summarizer._generate_stream(summarizer._chunk_prompt("Talk", "", True), 100)
+    call = client.calls[0]
+    assert call["system"] == get_prompt("system", "pitch_deck")
+    assert get_prompt("chunk", "pitch_deck") in call["prompt"]
+    assert get_prompt("chunk", "meeting_summary") not in call["prompt"]
+
+
+def test_required_sections_are_style_specific() -> None:
+    limit = 100
+    near_cap = "word " * (limit * 4 // 5 - 1) + "end."
+    meeting = make_summarizer(RecordingClient(), style="meeting_summary")
+    transcript = make_summarizer(RecordingClient(), style="pure_transcription")
+    assert meeting._looks_truncated(near_cap, limit, require_sections=True)
+    assert not transcript._looks_truncated(near_cap, limit, require_sections=True)
+    with_sections = near_cap + "\n\n## Action Items\n\n## Open Questions\n\n- None."
+    assert not meeting._looks_truncated(with_sections, limit, require_sections=True)
+
+
+def test_sequential_styles_concatenate_segments_without_merging() -> None:
+    load_prompts()
+    paragraph = "Alex talks about the grid engine in detail. " * 250
+    transcript = f"{paragraph}\n\n{paragraph} Jordan asks about GAS."
+    client = RecordingClient(
+        [
+            "**Alex:** UNIQUE_ALPHA is the grid engine.",
+            "**Jordan:** UNIQUE_BETA is the ability system.",
+        ]
+    )
+    summarizer = make_summarizer(client, style="pure_transcription")
+    result = summarizer.summarize(transcript)
+    assert result == (
+        "**Alex:** UNIQUE_ALPHA is the grid engine.\n\n"
+        "**Jordan:** UNIQUE_BETA is the ability system."
+    )
+    assert len(client.calls) == 2
+    assert all(
+        "Already recorded, background only" not in call["prompt"]
+        for call in client.calls
+    )
+
+
+def test_document_styles_keep_only_the_merged_document() -> None:
+    load_prompts()
+    paragraph = "Alex talks about the offline pipeline in detail. " * 250
+    transcript = f"{paragraph}\n\n{paragraph} Jordan asks about pricing."
+    merged = "# Summit\n\n*A pitch.*\n\n## Problem\n\n- Studios cannot upload."
+    client = RecordingClient(
+        [
+            "## Problem\n- UNIQUE_ALPHA blocks uploads.",
+            "## Ask\n- UNIQUE_BETA engineers.",
+            merged,
+            merged,
+        ]
+    )
+    summarizer = make_summarizer(client, style="pitch_deck")
+    result = summarizer.summarize(transcript)
+    assert result == merged
+    assert "UNIQUE_ALPHA" not in result
 
 
 def test_extract_context_length_from_modelinfo() -> None:

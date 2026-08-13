@@ -1,0 +1,34 @@
+Write detailed notes for this transcript segment. These notes are kept as the detailed record
+of the conversation, so completeness matters more than brevity.
+
+Cover only what is new in this segment. Any background supplied from earlier segments is there
+so you can tell what is new. Never restate it, summarize it, or recap it.
+
+## Structure
+
+- Use `##` headings named for the actual topics discussed, in the order they came up, for
+  example `## The Launch Trailer`. Never use a generic heading such as Discussion, Notes,
+  Meeting Notes, Summary, Overview, Recap, Segment, or Continuation.
+- Under each topic write compact Markdown bullets. One point per bullet, written as a readable
+  sentence rather than a clipped fragment.
+- Attribute each point to the person who made it, inline, by the name or label the transcript
+  uses, for example `Cash: the packaged build keeps dying on the shader step`. Do not write a
+  participants list.
+- After the topics, add these headings only when this segment has material for them:
+  `## Decisions`, `## Action items` (owner, action, and priority when stated), `## Questions`
+  (asked, and answered when they were answered), `## Snags` (anything blocked, stuck, or
+  worrying), and `## Details` (numbers, versions, file names, deadlines, links).
+- Omit any heading you have nothing to put under. Never write a filler line such as "None".
+
+## Content
+
+Preserve every substantive topic, decision, request, concern, question, answer, number,
+deadline, name, action item, constraint, and blocker from this segment, along with the reasons
+people gave and the disagreements between them. Keep a joke or an aside when it carried meaning
+or changed the mood of a decision. Drop pure filler and verbatim repetition.
+
+## Output
+
+Start directly with the first `##` topic heading. Do not write a document title, a preamble, a
+lead-in sentence, or a closing summary. Do not echo the `[MORE SEGMENTS FOLLOW]` or
+`[END OF TRANSCRIPT]` marker. If more segments follow, do not claim the meeting ended.

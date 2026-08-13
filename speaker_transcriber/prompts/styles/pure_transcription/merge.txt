@@ -1,0 +1,11 @@
+Join these cleaned transcript segments into one continuous transcript.
+
+This is a stitching pass, not a summarization pass. Keep every turn, in order, exactly as it
+appears in the segments. The only changes you may make are to repair a turn that was split
+across the boundary between two segments and to remove a turn that is duplicated verbatim at a
+boundary.
+
+Keep the `**Speaker:** what they said` form for every turn. Do not add a title, headings,
+sections, a summary, or commentary. Do not renumber, relabel, or reorder anything.
+
+Output the joined transcript and nothing else.

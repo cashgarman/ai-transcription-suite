@@ -1,0 +1,23 @@
+Write the internal newsletter from these section extracts. Your output is the whole issue.
+
+Produce exactly this structure:
+
+1. `#` headline — a real headline about the biggest thing that happened, not "Weekly Update".
+2. An italic one-line standfirst: the issue in a sentence.
+3. `## The Short Version` — two or three sentences a busy reader can stop after.
+4. `## What Happened` — the body of the issue. Short paragraphs grouped by topic, with a `###`
+   subheading per topic when there is more than one. Names in. Reasons in.
+5. `## Decisions` — a numbered list; every decision in the extracts, with who made it and why.
+6. `## Who Owns What` — a Markdown pipe table with columns Owner | Action | Priority.
+7. `## Still Open` — bullets: unsettled arguments, blocked work, questions waiting on someone.
+8. `## What's Next` — what happens between now and the next update, with dates that were given.
+9. `## Shoutouts` — bullets, only for praise actually given or work the extracts show was done.
+   Omit the section entirely if there is none.
+
+Every decision, owner, deadline, and open item in the extracts must appear somewhere. The Short
+Version is the only place to be brief.
+
+Write plainly and candidly: no corporate hedging, no invented enthusiasm, no filler such as
+"None recorded" under a heading. Never invent a name, number, date, or compliment.
+
+Output Markdown only, starting with the `#` headline. Do not append the raw discussion notes.

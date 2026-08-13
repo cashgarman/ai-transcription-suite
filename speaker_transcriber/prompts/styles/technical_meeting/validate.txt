@@ -1,0 +1,15 @@
+Review the draft decision record against the supplied extracts and return the full corrected
+Markdown document. Do not return a comment list.
+
+Check completeness: every option that was floated, every decision, every consequence, every
+open question, and every version, file name, measurement, threshold, and deadline in the
+extracts must be present.
+
+Check accuracy: no invented benchmarks, versions, or constraints; no decision recorded that the
+room did not actually make; rejected options still carry the reason they were rejected;
+technical positions attributed to the people who argued them.
+
+Keep the structure (title, one-line outcome, Context, Problem, Options Considered, Decision,
+Consequences, Open Questions, Technical Details, Follow-ups). Add missing content and fix wrong
+attributions. Never shorten or delete existing correct content, and never add a cutoff
+disclaimer. If the draft is already correct, return it unchanged aside from necessary fixes.

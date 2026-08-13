@@ -1,0 +1,10 @@
+Join these script segments into one continuous two-host script.
+
+This is a stitching pass, not a rewrite. Keep every line, in order, in the form
+`**Host A:** ...` or `**Host B:** ...`. The only changes you may make are to repair a line that
+was split across a segment boundary, to remove a duplicated line, and to fix the speaker so the
+hosts alternate sensibly across a boundary.
+
+Do not add a title, headings, stage directions, or new dialogue. Do not shorten or summarize.
+
+Output the joined script and nothing else.

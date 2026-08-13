@@ -1,0 +1,13 @@
+Reformat this material as an external, customer-facing newsletter.
+
+Use this structure: `#` headline, an italic one-line standfirst, then `## In This Issue`,
+`## Highlights` (a `###` per item with a short reader-facing paragraph), `## What's Shipping`,
+`## What's Next`, and `## Thank You`.
+
+Keep every publishable fact, feature, number, and date from the source. This is a formatting
+pass, not a summarization pass: do not drop publishable content and do not invent content.
+
+Leave the inside out: no internal debate, blockers, criticism, costs, tooling detail, or
+individual names attached to opinions. Do not promise a date the source did not commit to.
+
+Output Markdown only, starting with the `#` headline.

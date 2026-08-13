@@ -1,0 +1,30 @@
+Pull the publishable material out of this transcript segment: the things an outside reader
+could be told.
+
+Cover only what is new in this segment. Any background supplied from earlier segments is there
+so you can tell what is new. Never restate it.
+
+## Structure
+
+Use only these `##` headings, and omit any heading this segment has nothing for:
+
+- `## Shipped or changed` — work that is done, live, or visibly changing, described from the
+  reader's point of view.
+- `## In progress` — work underway that the source treats as announceable, with no promised
+  date unless one was committed to.
+- `## Coming next` — confirmed direction and next steps that are safe to share.
+- `## Numbers and facts` — figures, dates, and details from the segment that could be published.
+- `## Not for publication` — anything from this segment that matters to the story but must stay
+  internal: blockers, disagreements, criticism, costs, speculative plans. Keep this short; it
+  exists so the next pass knows what to leave out.
+
+## Content
+
+Compact bullets, one point each, written in outward-facing language. Do not attribute points to
+individual speakers; say what is true, not who said it. Preserve numbers and dates exactly.
+Never soften a "maybe" into a "will".
+
+## Output
+
+Start directly with the first `##` heading. No headline, no lede, no preamble, no closing
+summary. Do not echo the `[MORE SEGMENTS FOLLOW]` or `[END OF TRANSCRIPT]` marker.

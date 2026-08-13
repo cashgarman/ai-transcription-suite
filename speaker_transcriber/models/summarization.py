@@ -2,17 +2,26 @@ from __future__ import annotations
 
 import logging
 import re
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from speaker_transcriber.errors import ProcessingCancelled
 from speaker_transcriber.models.notes_assembly import (
     assemble_notes,
     fit_titles,
     recent_lines,
     topic_titles,
 )
-from speaker_transcriber.prompts import get_prompt
+from speaker_transcriber.prompts import (
+    DEFAULT_STYLE,
+    MEETING_PIPELINE,
+    SEQUENTIAL_PIPELINE,
+    SummaryStyle,
+    get_prompt,
+    get_style,
+)
 
 
 LOGGER = logging.getLogger("speaker_transcriber.summarization")
@@ -30,7 +39,6 @@ MAX_CONTINUE_PASSES = 2
 TRUNCATION_CAP_RATIO = 0.90
 
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+")
-_REQUIRED_SECTIONS = ("action items", "open questions")
 _OOM_PATTERN = re.compile(
     r"out of memory"
     r"|\boom\b"
@@ -129,12 +137,15 @@ class RequirementsSummarizer:
     MODEL_NAME = "qwen3.5:9b"
     CHUNK_STAGE_END = 0.55
     MERGE_STAGE_END = 0.80
+    style: SummaryStyle = get_style(DEFAULT_STYLE)
 
     def __init__(
         self,
         model_name: str = MODEL_NAME,
         *,
         num_ctx: int,
+        style: str = DEFAULT_STYLE,
+        cancel_event: threading.Event | None = None,
     ) -> None:
         """num_ctx is required: it is the Notes context length the user selected."""
         import ollama
@@ -143,7 +154,24 @@ class RequirementsSummarizer:
             raise ValueError("A positive Notes context length (num_ctx) is required.")
         self.model_name = model_name
         self.num_ctx = int(num_ctx)
+        self.style: SummaryStyle = get_style(style)
+        self.cancel_event = cancel_event
         self.client = ollama.Client()
+
+    @property
+    def style_id(self) -> str:
+        return self.style.style_id
+
+    def _prompt(self, name: str) -> str:
+        return get_prompt(name, self.style_id)
+
+    @property
+    def _overview_label(self) -> str:
+        return "meeting overview" if self.style.is_meeting_family else "document"
+
+    def _raise_if_cancelled(self) -> None:
+        if self.cancel_event is not None and self.cancel_event.is_set():
+            raise ProcessingCancelled()
 
     @property
     def CHUNK_CHARACTER_LIMIT(self) -> int:
@@ -292,7 +320,7 @@ class RequirementsSummarizer:
         limit = token_limit if token_limit is not None else self._num_predict("extract")
         generate_kwargs = {
             "model": self.model_name,
-            "system": get_prompt("system"),
+            "system": self._prompt("system"),
             "prompt": prompt,
             "stream": True,
             "think": False,
@@ -304,13 +332,16 @@ class RequirementsSummarizer:
         }
         response_parts: list[str] = []
         thinking_parts: list[str] = []
+        stream = None
         try:
+            self._raise_if_cancelled()
             try:
                 stream = self.client.generate(**generate_kwargs)
             except TypeError:
                 generate_kwargs.pop("think", None)
                 stream = self.client.generate(**generate_kwargs)
             for chunk in stream:
+                self._raise_if_cancelled()
                 response, thinking = extract_generate_chunk_parts(chunk)
                 if thinking:
                     thinking_parts.append(thinking)
@@ -324,6 +355,8 @@ class RequirementsSummarizer:
                         on_chunk(response)
         except OllamaOutOfMemoryError:
             raise
+        except ProcessingCancelled:
+            raise
         except Exception as exc:
             if is_out_of_memory_error(exc):
                 LOGGER.warning(
@@ -335,6 +368,13 @@ class RequirementsSummarizer:
                 )
                 raise OllamaOutOfMemoryError(str(exc)) from exc
             raise
+        finally:
+            close = getattr(stream, "close", None)
+            if callable(close):
+                try:
+                    close()
+                except Exception:
+                    LOGGER.debug("Could not close the Ollama stream", exc_info=True)
         full_response = "".join(response_parts).strip()
         if full_response:
             return full_response
@@ -382,8 +422,11 @@ class RequirementsSummarizer:
             return True
         if not require_sections:
             return False
+        required = self.style.required_sections
+        if not required:
+            return False
         lower = stripped.lower()
-        return not any(section in lower for section in _REQUIRED_SECTIONS)
+        return not any(section in lower for section in required)
 
     def _join_continuation(self, prefix: str, addition: str) -> str:
         left = prefix.rstrip()
@@ -416,6 +459,7 @@ class RequirementsSummarizer:
         token_limit = self._num_predict(stage)
         continued = text
         for pass_index in range(MAX_CONTINUE_PASSES):
+            self._raise_if_cancelled()
             if not self._looks_truncated(continued, token_limit, require_sections):
                 return continued
             LOGGER.info(
@@ -449,7 +493,7 @@ class RequirementsSummarizer:
         on_chunk: Callable[[str], None] | None = None,
         on_reasoning: Callable[[int], None] | None = None,
     ) -> str:
-        instruction = get_prompt("merge")
+        instruction = self._prompt("merge")
         merged = "\n\n".join(
             f"### Section {index}\n\n{section}"
             for index, section in enumerate(sections, start=1)
@@ -483,7 +527,13 @@ class RequirementsSummarizer:
         return result
 
     def _assemble_document(self, front_matter: str, extracts: list[str]) -> str:
-        """Join the generated overview with one merged body of section notes."""
+        """Join the generated overview with one merged body of section notes.
+
+        Only the meeting styles keep the segment notes: every other style's
+        merge pass already wrote the whole document.
+        """
+        if self.style.pipeline != MEETING_PIPELINE:
+            return front_matter.strip()
         return assemble_notes(front_matter, extracts)
 
     def _running_outline(self, extracts: list[str]) -> str:
@@ -493,7 +543,7 @@ class RequirementsSummarizer:
         model back its own Participants, Decisions, and Action items blocks is
         what made it copy them into every segment.
         """
-        if not extracts:
+        if not extracts or not self.style.uses_running_outline:
             return ""
         budget = self._running_char_budget()
         parts: list[str] = []
@@ -511,7 +561,7 @@ class RequirementsSummarizer:
 
     def _chunk_prompt(self, chunk: str, running: str, is_last: bool) -> str:
         marker = "[END OF TRANSCRIPT]" if is_last else "[MORE SEGMENTS FOLLOW]"
-        parts = [get_prompt("chunk")]
+        parts = [self._prompt("chunk")]
         if running:
             parts.append(
                 "## Already recorded, background only\n\n"
@@ -543,7 +593,7 @@ class RequirementsSummarizer:
         on_reasoning: Callable[[int], None] | None,
         stage_start: float,
     ) -> str:
-        instruction = get_prompt("validate")
+        instruction = self._prompt("validate")
         token_limit = self._num_predict("validate")
         budget = self._prompt_char_budget("validate")
         packed = self._format_extracts(extracts)
@@ -563,7 +613,7 @@ class RequirementsSummarizer:
             )
             return draft
 
-        emit(stage_start, "Checking the overview against section notes…")
+        emit(stage_start, f"Checking the {self._overview_label} against section notes…")
         if on_section_break is not None:
             on_section_break()
         LOGGER.info(
@@ -612,12 +662,13 @@ class RequirementsSummarizer:
     ) -> str:
         if not markdown.strip():
             raise ValueError("The meeting notes are empty.")
+        self._raise_if_cancelled()
         if on_progress is not None:
             on_progress(0.0, "Formatting meeting notes…")
         token_limit = self._num_predict("format")
         LOGGER.info("Formatting meeting notes (num_predict=%d)", token_limit)
         formatted = self._generate_stream(
-            f"{get_prompt('format')}\n\n{markdown.strip()}",
+            f"{self._prompt('format')}\n\n{markdown.strip()}",
             token_limit,
             on_chunk,
         )
@@ -640,8 +691,9 @@ class RequirementsSummarizer:
         try:
             chunks = self._chunks(text)
             LOGGER.info(
-                "Starting summarization with %s (num_ctx=%d, extract_predict=%d, "
+                "Starting %s summarization with %s (num_ctx=%d, extract_predict=%d, "
                 "merge_predict=%d, document_predict=%d, chunk_limit=%d, %d chunk(s))",
+                self.style_id,
                 self.model_name,
                 self.num_ctx,
                 self._num_predict("extract"),
@@ -666,6 +718,7 @@ class RequirementsSummarizer:
             running = ""
             total_chunks = len(chunks)
             for index, chunk in enumerate(chunks, start=1):
+                self._raise_if_cancelled()
                 is_last = index == total_chunks
                 fraction = self.CHUNK_STAGE_END * ((index - 1) / total_chunks)
                 emit_progress(
@@ -708,6 +761,18 @@ class RequirementsSummarizer:
                     f"Completed section {index} of {total_chunks}",
                 )
 
+            if self.style.pipeline == SEQUENTIAL_PIPELINE:
+                summary = "\n\n".join(
+                    extract.strip() for extract in extracts if extract.strip()
+                )
+                emit_progress(1.0, "Summary complete")
+                LOGGER.info(
+                    "Summarization complete (%d characters from %d segment(s))",
+                    len(summary),
+                    len(extracts),
+                )
+                return summary
+
             front_matter = self._front_matter(
                 extracts,
                 emit_progress,
@@ -736,6 +801,8 @@ class RequirementsSummarizer:
             return summary
         except OllamaOutOfMemoryError:
             raise
+        except ProcessingCancelled:
+            raise
         except Exception:
             LOGGER.exception(
                 "Local summarization failed. Ensure Ollama is running and model %s is installed.",
@@ -758,7 +825,7 @@ class RequirementsSummarizer:
         if not extracts:
             return ""
         if len(extracts) == 1:
-            emit_progress(self.CHUNK_STAGE_END, "Writing the meeting overview…")
+            emit_progress(self.CHUNK_STAGE_END, f"Writing the {self._overview_label}…")
             if on_section_break is not None:
                 on_section_break()
             return self._merge(extracts, on_chunk, on_reasoning)
@@ -767,7 +834,7 @@ class RequirementsSummarizer:
         merge_round = 1
         progress_span = self.MERGE_STAGE_END - self.CHUNK_STAGE_END
         while len(sections) > 1:
-            instruction = get_prompt("merge")
+            instruction = self._prompt("merge")
             groups = self._pack_groups(sections, instruction, stage="merge")
             if all(len(group) == 1 for group in groups) and len(sections) > 1:
                 groups = [
@@ -782,6 +849,7 @@ class RequirementsSummarizer:
             )
             next_sections: list[str] = []
             for batch_number, batch in enumerate(groups, start=1):
+                self._raise_if_cancelled()
                 fraction = self.CHUNK_STAGE_END + progress_span * (
                     (batch_number - 1) / max(len(groups), 1)
                 )
@@ -790,7 +858,7 @@ class RequirementsSummarizer:
                     continue
                 emit_progress(
                     fraction,
-                    f"Writing the meeting overview (round {merge_round}, "
+                    f"Writing the {self._overview_label} (round {merge_round}, "
                     f"batch {batch_number} of {len(groups)})…",
                 )
                 if on_reasoning is not None:
@@ -800,13 +868,14 @@ class RequirementsSummarizer:
                 merged_summary = self._merge(batch, on_chunk, on_reasoning)
                 if not merged_summary.strip():
                     raise RuntimeError(
-                        f"Ollama returned an empty overview in round {merge_round}."
+                        f"Ollama returned an empty {self._overview_label} in "
+                        f"round {merge_round}."
                     )
                 next_sections.append(merged_summary)
                 emit_progress(
                     self.CHUNK_STAGE_END
                     + progress_span * (batch_number / max(len(groups), 1)),
-                    f"Completed overview batch {batch_number} of {len(groups)}",
+                    f"Completed batch {batch_number} of {len(groups)}",
                 )
             if next_sections == sections:
                 LOGGER.warning(

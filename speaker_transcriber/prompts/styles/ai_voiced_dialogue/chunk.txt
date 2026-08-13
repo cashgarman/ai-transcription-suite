@@ -1,0 +1,27 @@
+Write the stretch of the two-host script that covers this segment of the recording.
+
+Cover only what is new in this segment. Any background supplied from earlier segments is there
+so you know what the hosts have already said. Never recap it, restate it, or reintroduce the
+show.
+
+## Rules
+
+- Every line is `**Host A:** ...` or `**Host B:** ...`, alternating, one paragraph per line.
+- If this is the opening of the show, Host A opens cold: what the recording was and who was in
+  it, in two sentences at most. If background was supplied, skip the introduction entirely and
+  pick up mid-conversation.
+- Work through the substance of the segment in the order it came up. Keep the decisions, the
+  numbers, the names, the disagreements, and the reasons people gave. Attribute them: "Cash
+  argued that…", "Andrew's worry was…".
+- Host A asks the question a listener would ask, then Host B answers it from the source. Never
+  let a host answer with something the source does not support.
+- Keep it conversational but dense. No filler chatter, no jokes you invented, no speculation
+  about what the team meant or what happens next.
+- Do not summarize the segment down to a few lines. If the segment covered six topics, the
+  script covers six topics.
+
+## Output
+
+Start directly with a host line. No title, no heading, no preamble, no closing sign-off unless
+you see `[END OF TRANSCRIPT]`. Do not echo the `[MORE SEGMENTS FOLLOW]` or
+`[END OF TRANSCRIPT]` marker.

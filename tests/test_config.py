@@ -162,3 +162,21 @@ def test_pdf_theme_round_trip(tmp_path) -> None:
     store = SettingsStore(tmp_path)
     store.save(AppSettings(pdf_theme="dark"))
     assert store.load().pdf_theme == "dark"
+
+
+def test_summary_style_defaults_to_meeting_summary() -> None:
+    settings = AppSettings()
+    settings.validate()
+    assert settings.summary_style == "meeting_summary"
+
+
+def test_invalid_summary_style_falls_back_to_meeting_summary() -> None:
+    settings = AppSettings(summary_style="not-a-style")
+    settings.validate()
+    assert settings.summary_style == "meeting_summary"
+
+
+def test_summary_style_round_trip(tmp_path) -> None:
+    store = SettingsStore(tmp_path)
+    store.save(AppSettings(summary_style="pitch_deck"))
+    assert store.load().summary_style == "pitch_deck"

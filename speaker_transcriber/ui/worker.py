@@ -10,6 +10,7 @@ from speaker_transcriber.errors import ProcessingCancelled
 from speaker_transcriber.models.summarization import SummarizationProgress
 from speaker_transcriber.pipeline.processor import TranscriptionProcessor
 from speaker_transcriber.pipeline.types import ProcessingOptions, ProgressUpdate
+from speaker_transcriber.prompts import DEFAULT_STYLE, get_style, normalize_style
 from speaker_transcriber.ui.oom_recovery_dialog import (
     OomRecoveryChoice,
     OomRecoveryRequest,
@@ -248,13 +249,20 @@ class SummarizationWorker(QThread, NotesMemoryRecoveryMixin):
         text: str,
         model_name: str,
         num_ctx: int,
+        style: str = DEFAULT_STYLE,
         parent=None,
     ) -> None:
         super().__init__(parent)
         self.text = text
         self.model_name = model_name
         self.num_ctx = int(num_ctx)
+        self.style = normalize_style(style)
+        self.cancel_event = threading.Event()
         self._init_recovery()
+
+    def request_cancel(self) -> None:
+        self.cancel_event.set()
+        self.provide_recovery(OomRecoveryChoice(action=STOP))
 
     def run(self) -> None:
         from speaker_transcriber.models.summarization import (
@@ -273,9 +281,14 @@ class SummarizationWorker(QThread, NotesMemoryRecoveryMixin):
 
         while True:
             try:
+                if self.cancel_event.is_set():
+                    self.cancelled.emit()
+                    return
                 summarizer = RequirementsSummarizer(
                     self.model_name,
                     num_ctx=self.num_ctx,
+                    style=self.style,
+                    cancel_event=self.cancel_event,
                 )
                 summary = summarizer.summarize(
                     self.text,
@@ -285,13 +298,16 @@ class SummarizationWorker(QThread, NotesMemoryRecoveryMixin):
                 )
                 self.completed.emit(summary)
                 return
-            except OllamaOutOfMemoryError as exc:
-                LOGGER.warning("Summarization ran out of GPU memory: %s", exc)
-                if self._apply_recovery(exc):
-                    self.section_break.emit()
-                    continue
+            except ProcessingCancelled:
                 self.cancelled.emit()
                 return
+            except OllamaOutOfMemoryError as exc:
+                LOGGER.warning("Summarization ran out of GPU memory: %s", exc)
+                if self.cancel_event.is_set() or not self._apply_recovery(exc):
+                    self.cancelled.emit()
+                    return
+                self.section_break.emit()
+                continue
             except Exception as exc:
                 LOGGER.exception("Summarization worker failed")
                 self.failed.emit(str(exc))
@@ -320,6 +336,7 @@ class PdfExportWorker(QThread, NotesMemoryRecoveryMixin):
         num_ctx: int = 0,
         pdf_engine: str = "reportlab",
         pdf_theme: str = "light",
+        style: str = DEFAULT_STYLE,
         parent=None,
     ) -> None:
         super().__init__(parent)
@@ -330,6 +347,7 @@ class PdfExportWorker(QThread, NotesMemoryRecoveryMixin):
         self.num_ctx = int(num_ctx)
         self.pdf_engine = pdf_engine
         self.pdf_theme = pdf_theme
+        self.style = normalize_style(style)
         self._init_recovery()
 
     def run(self) -> None:
@@ -386,6 +404,7 @@ class PdfExportWorker(QThread, NotesMemoryRecoveryMixin):
             summarizer = RequirementsSummarizer(
                 self.model_name,
                 num_ctx=self.num_ctx,
+                style=self.style,
             )
 
             def on_summarize_progress(fraction: float, message: str) -> None:
@@ -409,7 +428,7 @@ class PdfExportWorker(QThread, NotesMemoryRecoveryMixin):
             emit_progress(0.05, "Parsing meeting notes…")
 
         document = parse_meeting_markdown(markdown)
-        if document.needs_format_pass():
+        if get_style(self.style).is_meeting_family and document.needs_format_pass():
             if not self.model_name:
                 raise RuntimeError(
                     "The meeting notes need formatting. Select an Ollama model "
@@ -423,6 +442,7 @@ class PdfExportWorker(QThread, NotesMemoryRecoveryMixin):
                 summarizer = RequirementsSummarizer(
                     self.model_name,
                     num_ctx=self.num_ctx,
+                    style=self.style,
                 )
             emit_progress(self.SUMMARIZE_END, "Formatting meeting notes…")
 
@@ -443,6 +463,7 @@ class PdfExportWorker(QThread, NotesMemoryRecoveryMixin):
             Path(self.destination),
             engine=self.pdf_engine,
             theme=self.pdf_theme,
+            style=self.style,
         )
         emit_progress(1.0, "PDF export complete")
         self.completed.emit(self.destination)

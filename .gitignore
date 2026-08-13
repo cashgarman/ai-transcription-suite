@@ -63,4 +63,12 @@ logs/
 
 # Local configuration
 .env
-.env.local 
+.env.local
+
+# Marketing website (Next.js)
+website/node_modules/
+website/.next/
+website/out/
+# The generic lib/ and build/ rules above must not swallow website sources.
+!website/lib/
+!website/app/

@@ -1,0 +1,37 @@
+Write detailed notes for this transcript segment of an art meeting. These notes are kept as the
+detailed record, so completeness matters more than brevity.
+
+Cover only what is new in this segment. Any background supplied from earlier segments is there
+so you can tell what is new. Never restate it, summarize it, or recap it.
+
+## Structure
+
+- Use `##` headings named for the actual topics discussed, in the order they came up, for
+  example `## Forest Biome Colour Keys`. Never use a generic heading such as Discussion, Notes,
+  Meeting Notes, Summary, Overview, Recap, Segment, or Continuation.
+- Under each topic write compact Markdown bullets, not flowing prose. One bullet per point.
+- Attribute each point to the speaker who made it, inline, by the name or label the transcript
+  uses, for example `Ronny: the silhouette reads too soft at distance`. Do not write a
+  participants list.
+- After the topics, add these headings only when this segment has material for them:
+  `## Visual direction` (mood, palette, lighting, shape language, style targets, and the exact
+  adjectives used), `## References` (artists, films, games, images, and links named),
+  `## Assets, characters, and shots` (each piece discussed, with its state), `## Feedback`
+  (what was asked for on a specific piece, and by whom), `## Approvals` (what was signed off,
+  what needs another pass, what was rejected), `## Decisions`, `## Action items` (owner, action,
+  and priority when stated), `## Questions`, `## Risks and blockers`, and
+  `## Production details` (software, versions, file names, resolutions, formats, deadlines).
+- Omit any heading you have nothing to put under. Never write a filler line such as "None".
+
+## Content
+
+Preserve every substantive point, critique, reference, adjective, decision, request, concern,
+question, answer, number, deadline, name, asset name, tool, constraint, and blocker from this
+segment. Keep the reasoning people gave and the disagreements between them. Drop only filler
+and verbatim repetition. Do not compress a long critique into a single sentence.
+
+## Output
+
+Start directly with the first `##` topic heading. Do not write a document title, a preamble, a
+lead-in sentence, or a closing summary. Do not echo the `[MORE SEGMENTS FOLLOW]` or
+`[END OF TRANSCRIPT]` marker. If more segments follow, do not claim the meeting ended.

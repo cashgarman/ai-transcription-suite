@@ -288,6 +288,31 @@ entire `dist\SpeakerTranscriber` folder, not just the `.exe`. CUDA and AI depend
 make the distribution large. Model weights are not bundled; they are downloaded
 to the normal local caches on first use. FFmpeg must still be installed separately.
 
+## Marketing website
+
+The public site lives in `website/` and is a separate Next.js project. It is not
+needed to build or run the application. Manage it with the wrapper scripts,
+which install dependencies on first use and track the background server:
+
+```powershell
+.\scripts\website.ps1 start          # production server on 0.0.0.0:3100 (LAN)
+.\scripts\website.ps1 serve          # background dev server, same bind
+.\scripts\website.ps1 status
+.\scripts\website.ps1 stop
+```
+
+```bash
+./scripts/website.sh dev
+./scripts/website.sh serve
+./scripts/website.sh status
+./scripts/website.sh stop
+```
+
+Other commands are `install`, `build`, `restart`, `logs`, `open`, `lint`,
+`check`, `clean`, and `reset`. Node.js 20 or newer is required. See
+[`website/README.md`](website/README.md) for content, configuration, and
+deployment notes.
+
 ## Privacy and limitations
 
 All audio decoding and inference is local. The application does not send audio

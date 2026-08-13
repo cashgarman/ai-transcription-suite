@@ -1,0 +1,15 @@
+Reformat this material as stand-up notes.
+
+Use this structure: `#` title, an italic one-line summary, `## Team Themes` (bullets),
+`## Updates` with a `###` per person carrying only `- Done:`, `- Doing:`, and `- Blocked:`
+bullets, `## Blockers` as a Markdown pipe table with columns Owner | Action | Priority,
+`## Announcements`, and `## Shoutouts`.
+
+Keep every update, blocker, ticket number, name, and date from the source. This is a formatting
+pass, not a summarization pass: never shorten, merge, or drop content, and never invent content.
+Each person appears exactly once, with all of their material in one block.
+
+Make the blockers table a real pipe table even if the source used bullets or prose. Omit a
+section rather than writing "None reported".
+
+Output Markdown only, starting with the `#` title.

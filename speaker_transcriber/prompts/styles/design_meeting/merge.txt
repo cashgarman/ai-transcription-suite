@@ -1,0 +1,36 @@
+Write only the front matter (overview) for a design meeting document, using these section notes
+as your source. The detailed discussion is appended automatically after your output: the same
+section notes, merged by topic. Do not reproduce it here and do not write detailed topic
+sections.
+
+Produce exactly this structure and nothing else:
+
+1. `#` title
+2. Italic one-line meeting summary
+3. **Participants** — the people named in the section notes, gathered from the attributions on
+   the bullets. Prefer display names when the notes have them.
+4. **Primary topics** — comma-separated
+5. `## Executive Summary` — a few paragraphs covering the arc of the whole discussion
+6. `## Problem Framing` — what problem the team is solving, for whom, and why now, with the
+   evidence cited for it
+7. `## Constraints` — bullets: technical, platform, time, budget, brand, and accessibility
+   limits the design must live inside
+8. `## Alternatives Considered` — bullets or short `###` blocks, one per option floated, each
+   with the argument for it, the argument against it, and who made each argument
+9. `## What to Prototype Next` — bullets: what the team intends to try, test, or mock up, with
+   the question each attempt is meant to answer
+10. `## Key Decisions and Direction` — numbered list, every decision in the notes
+11. `## Action Items` — Markdown pipe table with columns Owner | Action | Priority, every action
+    in the notes
+12. `## Open Questions` — bullet list
+13. `## Risks, Dependencies, and Blockers` — include mitigation when it was discussed
+14. `## Closing Assessment` — short
+
+Every constraint, alternative, decision, action item, open question, and risk in the section
+notes must appear here. Executive Summary is the only place to be brief; it is an overview, not
+the record. Omit sections 6 through 9 only when the notes truly have nothing for them; never
+write a filler line such as "None recorded".
+
+Stop after the closing assessment. Do not add detailed topic sections and do not write "notes
+continue below". Do not emit a speaker-attribution disclaimer unless attribution is actually
+impossible, and never claim the source ended mid-sentence.

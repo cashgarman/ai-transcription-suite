@@ -1,0 +1,33 @@
+Write only the front matter (overview) for a relaxed write-up of this conversation, using these
+section notes as your source. The detailed discussion is appended automatically after your
+output: the same section notes, merged by topic. Do not reproduce it here and do not write
+detailed topic sections.
+
+Produce exactly this structure and nothing else:
+
+1. `#` title — what the conversation was really about, in plain words
+2. Italic one-line summary
+3. **Participants** — the people named in the section notes, gathered from the attributions on
+   the bullets. Prefer display names when the notes have them.
+4. **Primary topics** — comma-separated
+5. `## Executive Summary` — the story of the conversation in a few readable paragraphs: what
+   came up, where it went, what people felt strongly about, and where it landed. Write it as
+   prose a colleague would enjoy reading, not as a list of bullet fragments.
+6. `## What We Decided` — a numbered list; every decision in the notes, each with the reason
+   behind it in the same sentence
+7. `## Action Items` — Markdown pipe table with columns Owner | Action | Priority, every action
+   in the notes
+8. `## Open Questions` — bullet list, written as real questions
+9. `## Snags and Worries` — short paragraphs: what is stuck or worrying, and what was said
+   about handling it
+10. `## Closing Assessment` — a couple of warm, honest sentences on where things stand
+
+Every decision, action item, open question, and snag in the section notes must appear here.
+Executive Summary is the only place to be brief; it is an overview, not the record.
+
+Keep the voice warm and direct: contractions are fine, corporate hedging is not. Never soften a
+decision, never drop a name, and never invent a fact or a joke. Never write a filler line such
+as "None recorded".
+
+Stop after the closing assessment. Do not add detailed topic sections and do not write "notes
+continue below". Never claim the source ended mid-sentence.

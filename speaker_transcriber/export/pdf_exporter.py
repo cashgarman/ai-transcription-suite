@@ -15,10 +15,19 @@ from speaker_transcriber.export.meeting_document import (
     ParagraphBlock,
     RiskListBlock,
     Section,
+    as_script,
+    split_turn,
 )
 from speaker_transcriber.export.participants import (
     ParticipantHighlighter,
     build_highlighter,
+)
+from speaker_transcriber.export.pdf_layout import (
+    MASTHEAD,
+    PLAIN,
+    PdfLayout,
+    default_layout,
+    layout_for,
 )
 from speaker_transcriber.export.pdf_theme import (
     PdfPalette,
@@ -84,7 +93,7 @@ def _missing_reportlab_message() -> str:
 def _ensure_reportlab() -> None:
     global _REPORTLAB_READY, _NumberedCanvas, _OutlineEntry, _SectionRule
     global colors, TA_JUSTIFY, TA_LEFT, ParagraphStyle, HRFlowable, KeepTogether
-    global Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+    global PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
     if _REPORTLAB_READY:
         return
     try:
@@ -97,6 +106,7 @@ def _ensure_reportlab() -> None:
             Flowable as _flowable,
             HRFlowable as _hr_flowable,
             KeepTogether as _keep_together,
+            PageBreak as _page_break,
             Paragraph as _paragraph,
             SimpleDocTemplate as _simple_doc,
             Spacer as _spacer,
@@ -112,6 +122,7 @@ def _ensure_reportlab() -> None:
     ParagraphStyle = _paragraph_style
     HRFlowable = _hr_flowable
     KeepTogether = _keep_together
+    PageBreak = _page_break
     Paragraph = _paragraph
     SimpleDocTemplate = _simple_doc
     Spacer = _spacer
@@ -121,6 +132,11 @@ def _ensure_reportlab() -> None:
     class NumberedCanvas(_canvas.Canvas):
         palette: PdfPalette = palette_for("light")
         header_title: str = ""
+        page_width: float = _PAGE_WIDTH
+        page_height: float = _PAGE_HEIGHT
+        footer_label: str = ""
+        bare_pages: int = 0
+        """Leading pages that carry no header or footer, such as a cover."""
 
         def __init__(self, *args, **kwargs) -> None:
             super().__init__(*args, **kwargs)
@@ -144,6 +160,8 @@ def _ensure_reportlab() -> None:
             super().save()
 
         def _draw_chrome(self, page_count: int) -> None:
+            if self._pageNumber <= type(self).bare_pages:
+                return
             palette = type(self).palette
             self._draw_header(palette)
             self._draw_footer(palette, page_count)
@@ -155,48 +173,50 @@ def _ensure_reportlab() -> None:
                 return
             self.saveState()
             self.setFillColor(_color(palette.page))
-            self.rect(0, 0, _PAGE_WIDTH, _PAGE_HEIGHT, stroke=0, fill=1)
+            self.rect(
+                0,
+                0,
+                type(self).page_width,
+                type(self).page_height,
+                stroke=0,
+                fill=1,
+            )
             self.restoreState()
 
         def _draw_header(self, palette: PdfPalette) -> None:
             title = type(self).header_title
             if not title:
                 return
+            header_y = type(self).page_height - 0.58 * _INCH
+            right = type(self).page_width - _RIGHT_MARGIN
             self.setFont(_BODY_FONT, 8.5)
             self.setFillColor(_color(palette.muted))
-            self.drawString(_LEFT_MARGIN, _HEADER_Y, _truncate(title, 88))
+            self.drawString(_LEFT_MARGIN, header_y, _truncate(title, 88))
             self.setStrokeColor(_color(palette.rule))
             self.setLineWidth(0.6)
-            self.line(
-                _LEFT_MARGIN,
-                _HEADER_Y - 5,
-                _PAGE_WIDTH - _RIGHT_MARGIN,
-                _HEADER_Y - 5,
-            )
+            self.line(_LEFT_MARGIN, header_y - 5, right, header_y - 5)
 
         def _draw_footer(self, palette: PdfPalette, page_count: int) -> None:
+            right = type(self).page_width - _RIGHT_MARGIN
+            bare = type(self).bare_pages
+            label = type(self).footer_label
             self.setStrokeColor(_color(palette.rule))
             self.setLineWidth(0.6)
-            self.line(
-                _LEFT_MARGIN,
-                _FOOTER_Y + 12,
-                _PAGE_WIDTH - _RIGHT_MARGIN,
-                _FOOTER_Y + 12,
-            )
+            self.line(_LEFT_MARGIN, _FOOTER_Y + 12, right, _FOOTER_Y + 12)
             self.setFont(_BODY_FONT, 8.5)
             self.setFillColor(_color(palette.muted))
-            self.drawRightString(
-                _PAGE_WIDTH - _RIGHT_MARGIN,
-                _FOOTER_Y,
-                f"{self._pageNumber} of {page_count}",
-            )
+            if label:
+                caption = f"{label} {self._pageNumber - bare}"
+            else:
+                caption = f"{self._pageNumber} of {page_count}"
+            self.drawRightString(right, _FOOTER_Y, caption)
 
     class SectionRule(_hr_flowable):
         """Divider that stays hidden when a page break pushes it to the top."""
 
         def draw(self) -> None:
             _, y = self.canv.absolutePosition(0, 0)
-            frame_top = _PAGE_HEIGHT - _TOP_MARGIN
+            frame_top = NumberedCanvas.page_height - _TOP_MARGIN
             slack = (self.spaceBefore or 0) + (self.lineWidth or 0) + 2
             if y >= frame_top - slack:
                 return
@@ -243,12 +263,18 @@ def _truncate(text: str, limit: int) -> str:
     return collapsed[: limit - 1].rstrip() + "…"
 
 
-def _styles(palette: PdfPalette) -> dict[str, ParagraphStyle]:
+def _styles(
+    palette: PdfPalette,
+    layout: PdfLayout | None = None,
+) -> dict[str, ParagraphStyle]:
     _ensure_reportlab()
+    layout = layout or default_layout()
     text = _color(palette.text)
     muted = _color(palette.muted)
     heading = _color(palette.heading)
-    return {
+    accent = _color(palette.accent)
+    slides = layout.slide_per_section
+    styles = {
         "title": ParagraphStyle(
             "MeetingTitle",
             fontName=_BOLD_FONT,
@@ -305,11 +331,11 @@ def _styles(palette: PdfPalette) -> dict[str, ParagraphStyle]:
         "heading": ParagraphStyle(
             "MeetingHeading",
             fontName=_BOLD_FONT,
-            fontSize=14,
-            leading=18,
+            fontSize=26 if slides else 14,
+            leading=30 if slides else 18,
             alignment=TA_LEFT,
             spaceBefore=6,
-            spaceAfter=8,
+            spaceAfter=16 if slides else 8,
             textColor=heading,
         ),
         "subheading": ParagraphStyle(
@@ -352,12 +378,12 @@ def _styles(palette: PdfPalette) -> dict[str, ParagraphStyle]:
         "list": ParagraphStyle(
             "MeetingList",
             fontName=_BODY_FONT,
-            fontSize=10.5,
-            leading=16,
+            fontSize=14 if slides else 10.5,
+            leading=22 if slides else 16,
             alignment=TA_LEFT,
-            leftIndent=20,
-            firstLineIndent=-14,
-            spaceAfter=5,
+            leftIndent=24 if slides else 20,
+            firstLineIndent=-16 if slides else -14,
+            spaceAfter=10 if slides else 5,
             textColor=text,
         ),
         "table_header": ParagraphStyle(
@@ -377,6 +403,85 @@ def _styles(palette: PdfPalette) -> dict[str, ParagraphStyle]:
             textColor=text,
         ),
     }
+    styles.update(
+        {
+            "kicker": ParagraphStyle(
+                "MeetingKicker",
+                fontName=_BOLD_FONT,
+                fontSize=9.5,
+                leading=13,
+                alignment=TA_LEFT,
+                spaceAfter=10,
+                textColor=accent,
+            ),
+            "cover_title": ParagraphStyle(
+                "MeetingCoverTitle",
+                fontName=_BOLD_FONT,
+                fontSize=34 if slides else 30,
+                leading=38 if slides else 34,
+                alignment=TA_LEFT,
+                spaceAfter=12,
+                textColor=heading,
+            ),
+            "cover_subtitle": ParagraphStyle(
+                "MeetingCoverSubtitle",
+                fontName=_ITALIC_FONT,
+                fontSize=14,
+                leading=19,
+                alignment=TA_LEFT,
+                spaceAfter=18,
+                textColor=muted,
+            ),
+            "masthead_kicker": ParagraphStyle(
+                "MeetingMastheadKicker",
+                fontName=_BOLD_FONT,
+                fontSize=9.5,
+                leading=13,
+                alignment=TA_LEFT,
+                spaceAfter=6,
+                textColor=_color(palette.table_header_text),
+            ),
+            "masthead_title": ParagraphStyle(
+                "MeetingMastheadTitle",
+                fontName=_BOLD_FONT,
+                fontSize=25,
+                leading=29,
+                alignment=TA_LEFT,
+                textColor=_color(palette.table_header_text),
+            ),
+            "lede": ParagraphStyle(
+                "MeetingLede",
+                fontName=_ITALIC_FONT,
+                fontSize=13,
+                leading=19,
+                alignment=TA_LEFT,
+                spaceBefore=10,
+                spaceAfter=12,
+                textColor=text,
+            ),
+            "turn": ParagraphStyle(
+                "MeetingTurn",
+                fontName=_BODY_FONT,
+                fontSize=10.5,
+                leading=15,
+                alignment=TA_LEFT,
+                leftIndent=54,
+                firstLineIndent=-54,
+                spaceAfter=7,
+                textColor=text,
+            ),
+            "person": ParagraphStyle(
+                "MeetingPerson",
+                fontName=_BOLD_FONT,
+                fontSize=11.5,
+                leading=15,
+                alignment=TA_LEFT,
+                spaceAfter=4,
+                textColor=heading,
+            ),
+        }
+    )
+    return styles
 
 
 def markdown_to_reportlab(text: str) -> str:
@@ -397,6 +502,61 @@ def markdown_to_reportlab(text: str) -> str:
     return escaped.replace("\n", "<br/>")
 
 
+class _TurnColors:
+    """One colour per voice in a script, assigned in order of first appearance."""
+
+    def __init__(self, palette: PdfPalette) -> None:
+        self._palette = palette
+        self._assigned: dict[str, str] = {}
+
+    def color_for(self, speaker: str) -> str:
+        key = speaker.strip().lower()
+        if key not in self._assigned:
+            colors_available = self._palette.participants or (self._palette.accent,)
+            self._assigned[key] = colors_available[
+                len(self._assigned) % len(colors_available)
+            ]
+        return self._assigned[key]
+
+    def speakers_in(self, document: MeetingDocument) -> list[str]:
+        found: list[str] = []
+        seen: set[str] = set()
+        for section in document.sections:
+            for block in section.blocks:
+                if not isinstance(block, ParagraphBlock):
+                    continue
+                turn = split_turn(block.text)
+                if turn is None:
+                    continue
+                name = turn[0]
+                key = name.lower()
+                if key in seen:
+                    continue
+                seen.add(key)
+                found.append(name)
+                self.color_for(name)
+        return found
+
+
+def _turn_paragraph(
+    text: str,
+    styles: dict[str, ParagraphStyle],
+    turns: _TurnColors,
+    highlighter: ParticipantHighlighter,
+):
+    """A script line with the speaker's name hanging in their own colour."""
+    turn = split_turn(text)
+    if turn is None:
+        return Paragraph(_rich(text, highlighter), styles["body"])
+    speaker, spoken = turn
+    color = turns.color_for(speaker)
+    return Paragraph(
+        f'<b><font color="{color}">{markdown_to_reportlab(speaker)}</font></b>&nbsp;&nbsp;'
+        f"{markdown_to_reportlab(spoken)}",
+        styles["turn"],
+    )
+
+
 def _wrap_participant(text: str, color: str) -> str:
     return f'<b><font color="{color}">{text}</font></b>'
 
@@ -409,6 +569,7 @@ def _try_weasyprint_export(
     document: MeetingDocument,
     path: Path,
     theme: str,
+    style: str | None,
 ) -> bool:
     try:
         from speaker_transcriber.export.weasyprint_exporter import (
@@ -418,7 +579,7 @@ def _try_weasyprint_export(
 
         if not weasyprint_available():
             return False
-        export_weasyprint_pdf(document, path, theme=theme)
+        export_weasyprint_pdf(document, path, theme=theme, style=style)
         return True
     except Exception as exc:
         LOGGER.warning("WeasyPrint export failed for %s: %s", path, exc)
@@ -430,76 +591,77 @@ def export_meeting_pdf(
     path: Path,
     engine: str = "reportlab",
     theme: str = "light",
+    style: str | None = None,
 ) -> None:
     chosen = str(engine or "reportlab").strip().lower()
     theme = normalize_theme(theme)
     if chosen == "weasyprint":
-        if _try_weasyprint_export(document, path, theme):
+        if _try_weasyprint_export(document, path, theme, style):
             return
         if reportlab_available():
             LOGGER.warning(
                 "WeasyPrint is not available; falling back to ReportLab for %s",
                 path,
             )
-            _export_reportlab_pdf(document, path, theme)
+            _export_reportlab_pdf(document, path, theme, style)
             return
         raise RuntimeError(
             "WeasyPrint is not available. Install it and its native libraries "
             "(Pango/Cairo/GTK), or install ReportLab with `pip install reportlab`."
         )
     if reportlab_available():
-        _export_reportlab_pdf(document, path, theme)
+        _export_reportlab_pdf(document, path, theme, style)
         return
-    if _try_weasyprint_export(document, path, theme):
+    if _try_weasyprint_export(document, path, theme, style):
         LOGGER.warning(
             "ReportLab is not available; falling back to WeasyPrint for %s",
             path,
         )
         return
-    _export_reportlab_pdf(document, path, theme)
+    _export_reportlab_pdf(document, path, theme, style)
+
+
+def _page_size(layout: PdfLayout) -> tuple[float, float]:
+    if layout.landscape:
+        return (_PAGE_HEIGHT, _PAGE_WIDTH)
+    return (_PAGE_WIDTH, _PAGE_HEIGHT)
 
 
 def _export_reportlab_pdf(
     document: MeetingDocument,
     path: Path,
     theme: str = "light",
+    style: str | None = None,
 ) -> None:
     _ensure_reportlab()
-    palette = palette_for(theme)
+    layout = layout_for(style)
+    palette = palette_for(theme, style)
+    if layout.speaker_turns:
+        document = as_script(document)
     destination = Path(path)
     destination.parent.mkdir(parents=True, exist_ok=True)
-    styles = _styles(palette)
+    styles = _styles(palette, layout)
     anchors = anchor_map(document)
     highlighter = build_highlighter(document.participants, palette.participants)
-    story: list = []
+    turns = _TurnColors(palette)
+    page_width, page_height = _page_size(layout)
+    content_width = page_width - _LEFT_MARGIN - _RIGHT_MARGIN
 
-    if document.title.strip():
-        story.append(Paragraph(markdown_to_reportlab(document.title), styles["title"]))
-    if document.subtitle.strip():
-        story.append(
-            Paragraph(markdown_to_reportlab(document.subtitle), styles["subtitle"])
-        )
-    if document.participants.strip():
-        story.append(
-            Paragraph(
-                f"<b>Participants:</b> {_rich(document.participants, highlighter)}",
-                styles["meta"],
-            )
-        )
-    if document.primary_topics.strip():
-        story.append(
-            Paragraph(
-                f"<b>Primary topics:</b> {markdown_to_reportlab(document.primary_topics)}",
-                styles["meta"],
-            )
-        )
-    if story:
-        story.append(Spacer(1, 10))
-        story.append(_rule(palette, palette.rule_strong, 1.2))
-
-    story.extend(_toc_flowables(document, styles, palette))
+    story = _front_matter_flowables(
+        document,
+        styles,
+        palette,
+        layout,
+        highlighter,
+        turns,
+        content_width,
+    )
+    if layout.show_toc:
+        story.extend(_toc_flowables(document, styles, palette, content_width))
 
     for index, section in enumerate(document.sections):
+        if layout.slide_per_section and story:
+            story.append(PageBreak())
         story.extend(
             _section_flowables(
                 section,
@@ -507,24 +669,149 @@ def _export_reportlab_pdf(
                 styles,
                 palette,
                 anchors,
-                index > 0,
+                index > 0 and not layout.slide_per_section,
                 highlighter,
+                layout,
+                turns,
+                content_width,
             )
         )
 
     doc = SimpleDocTemplate(
         str(destination),
-        pagesize=(_PAGE_WIDTH, _PAGE_HEIGHT),
+        pagesize=(page_width, page_height),
         leftMargin=_LEFT_MARGIN,
         rightMargin=_RIGHT_MARGIN,
         topMargin=_TOP_MARGIN,
         bottomMargin=_BOTTOM_MARGIN,
-        title=document.title or destination.stem,
+        title=document.title or layout.fallback_title,
         author="Summit",
     )
     _NumberedCanvas.palette = palette
-    _NumberedCanvas.header_title = document.title.strip()
+    _NumberedCanvas.header_title = (
+        "" if layout.front_matter == MASTHEAD else document.title.strip()
+    )
+    _NumberedCanvas.page_width = page_width
+    _NumberedCanvas.page_height = page_height
+    _NumberedCanvas.footer_label = layout.footer_label
+    _NumberedCanvas.bare_pages = 1 if layout.has_cover_page else 0
     doc.build(story, canvasmaker=_NumberedCanvas)
+
+
+def _front_matter_flowables(
+    document: MeetingDocument,
+    styles: dict[str, ParagraphStyle],
+    palette: PdfPalette,
+    layout: PdfLayout,
+    highlighter: ParticipantHighlighter,
+    turns: _TurnColors,
+    content_width: float,
+) -> list:
+    """The opening of the document: a cover, a masthead, or just a title."""
+    if layout.front_matter == PLAIN:
+        return []
+    title = document.title.strip() or layout.fallback_title
+    if layout.front_matter == MASTHEAD:
+        return _masthead_flowables(document, styles, palette, layout, content_width)
+
+    cover = layout.has_cover_page
+    flowables: list = []
+    if cover:
+        flowables.append(Spacer(1, 1.6 * _INCH))
+    if layout.kicker:
+        flowables.append(
+            Paragraph(layout.kicker.upper(), styles["kicker"])
+        )
+    flowables.append(
+        Paragraph(
+            markdown_to_reportlab(title),
+            styles["cover_title"] if cover else styles["title"],
+        )
+    )
+    if document.subtitle.strip():
+        flowables.append(
+            Paragraph(
+                markdown_to_reportlab(document.subtitle),
+                styles["cover_subtitle"] if cover else styles["subtitle"],
+            )
+        )
+    if layout.show_participants and document.participants.strip():
+        flowables.append(
+            Paragraph(
+                f"<b>Participants:</b> {_rich(document.participants, highlighter)}",
+                styles["meta"],
+            )
+        )
+    if layout.show_participants and document.primary_topics.strip():
+        flowables.append(
+            Paragraph(
+                f"<b>Primary topics:</b> "
+                f"{markdown_to_reportlab(document.primary_topics)}",
+                styles["meta"],
+            )
+        )
+    legend = _legend_flowable(document, styles, turns)
+    if legend is not None:
+        flowables.append(legend)
+    if cover:
+        flowables.append(PageBreak())
+    else:
+        flowables.append(Spacer(1, 10))
+        flowables.append(_rule(palette, palette.rule_strong, 1.2))
+    return flowables
+
+
+def _masthead_flowables(
+    document: MeetingDocument,
+    styles: dict[str, ParagraphStyle],
+    palette: PdfPalette,
+    layout: PdfLayout,
+    content_width: float,
+) -> list:
+    """A newsletter banner across the top of page one, not a cover page."""
+    title = document.title.strip() or layout.fallback_title
+    rows = [
+        [Paragraph(layout.kicker.upper(), styles["masthead_kicker"])],
+        [Paragraph(markdown_to_reportlab(title), styles["masthead_title"])],
+    ]
+    band = Table(rows, colWidths=[content_width])
+    band.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), _color(palette.table_header_background)),
+                ("LEFTPADDING", (0, 0), (-1, -1), 14),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 14),
+                ("TOPPADDING", (0, 0), (-1, 0), 14),
+                ("BOTTOMPADDING", (0, -1), (-1, -1), 16),
+                ("TOPPADDING", (0, 1), (-1, -1), 0),
+                ("BOTTOMPADDING", (0, 0), (-1, -2), 0),
+            ]
+        )
+    )
+    band.spaceAfter = 4
+    flowables: list = [band]
+    if document.subtitle.strip():
+        flowables.append(
+            Paragraph(markdown_to_reportlab(document.subtitle), styles["lede"])
+        )
+    flowables.append(_rule(palette, palette.rule_strong, 1.2))
+    return flowables
+
+
+def _legend_flowable(
+    document: MeetingDocument,
+    styles: dict[str, ParagraphStyle],
+    turns: _TurnColors,
+):
+    """A colour key for the voices in a script, when the document has any."""
+    speakers = turns.speakers_in(document)
+    if len(speakers) < 2:
+        return None
+    parts = [
+        f'<b><font color="{turns.color_for(name)}">{markdown_to_reportlab(name)}</font></b>'
+        for name in speakers[:4]
+    ]
+    return Paragraph("&nbsp;&nbsp;·&nbsp;&nbsp;".join(parts), styles["meta"])
 
 
 def _rule(palette: PdfPalette, color: str, width: float = 0.7, hide_at_top: bool = False):
@@ -543,6 +830,7 @@ def _toc_flowables(
     document: MeetingDocument,
     styles: dict[str, ParagraphStyle],
     palette: PdfPalette,
+    content_width: float = _CONTENT_WIDTH,
 ) -> list:
     if not should_render_toc(document):
         return []
@@ -561,7 +849,7 @@ def _toc_flowables(
                 )
             ]
         )
-    table = Table(rows, colWidths=[_CONTENT_WIDTH])
+    table = Table(rows, colWidths=[content_width])
     table.setStyle(
         TableStyle(
             [
@@ -588,20 +876,41 @@ def _section_flowables(
     anchors: dict[tuple[int, int | None], str],
     with_divider: bool,
     highlighter: ParticipantHighlighter | None = None,
+    layout: PdfLayout | None = None,
+    turns: _TurnColors | None = None,
+    content_width: float = _CONTENT_WIDTH,
 ) -> list:
     highlighter = highlighter or ParticipantHighlighter()
+    layout = layout or default_layout()
+    turns = turns or _TurnColors(palette)
     flowables: list = []
     body: list = []
-    for block_index, block in enumerate(section.blocks):
-        body.extend(
-            _block_flowables(
-                block,
-                styles,
-                palette,
-                anchors.get((section_index, block_index), ""),
-                highlighter,
-            )
+    if layout.person_cards and _has_person_headings(section):
+        body = _person_card_flowables(
+            section,
+            section_index,
+            styles,
+            palette,
+            anchors,
+            highlighter,
+            layout,
+            turns,
+            content_width,
         )
+    else:
+        for block_index, block in enumerate(section.blocks):
+            body.extend(
+                _block_flowables(
+                    block,
+                    styles,
+                    palette,
+                    anchors.get((section_index, block_index), ""),
+                    highlighter,
+                    layout,
+                    turns,
+                    content_width,
+                )
+            )
     if section.title.strip():
         anchor = anchors.get((section_index, None), "")
         heading = Paragraph(
@@ -621,17 +930,102 @@ def _section_flowables(
     return flowables
 
 
+def _has_person_headings(section: Section) -> bool:
+    return any(
+        isinstance(block, HeadingBlock) and block.level >= 3
+        for block in section.blocks
+    )
+
+
+def _person_card_flowables(
+    section: Section,
+    section_index: int,
+    styles: dict[str, ParagraphStyle],
+    palette: PdfPalette,
+    anchors: dict[tuple[int, int | None], str],
+    highlighter: ParticipantHighlighter,
+    layout: PdfLayout,
+    turns: _TurnColors,
+    content_width: float,
+) -> list:
+    """Each `###` person and their update as one card that cannot be split."""
+    flowables: list = []
+    card: list = []
+
+    def flush() -> None:
+        nonlocal card
+        if card:
+            flowables.append(_surface_card(card, palette, content_width))
+            card = []
+
+    for block_index, block in enumerate(section.blocks):
+        anchor = anchors.get((section_index, block_index), "")
+        if isinstance(block, HeadingBlock) and block.level >= 3:
+            flush()
+            prefix = f'<a name="{anchor}"/>' if anchor else ""
+            card.append(
+                Paragraph(
+                    f"{prefix}{markdown_to_reportlab(block.text)}",
+                    styles["person"],
+                )
+            )
+            continue
+        rendered = _block_flowables(
+            block,
+            styles,
+            palette,
+            anchor,
+            highlighter,
+            layout,
+            turns,
+            content_width,
+        )
+        if card:
+            card.extend(rendered)
+        else:
+            flowables.extend(rendered)
+    flush()
+    return flowables
+
+
+def _surface_card(flowables: list, palette: PdfPalette, content_width: float):
+    card = Table([[item] for item in flowables], colWidths=[content_width])
+    card.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), _color(palette.surface)),
+                ("LINEBEFORE", (0, 0), (0, -1), 2.5, _color(palette.accent)),
+                ("LEFTPADDING", (0, 0), (-1, -1), 10),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+                ("TOPPADDING", (0, 0), (-1, 0), 8),
+                ("BOTTOMPADDING", (0, -1), (-1, -1), 8),
+                ("TOPPADDING", (0, 1), (-1, -1), 0),
+                ("BOTTOMPADDING", (0, 0), (-1, -2), 2),
+            ]
+        )
+    )
+    card.spaceAfter = 8
+    return KeepTogether([card])
+
+
 def _block_flowables(
     block: Block,
     styles: dict[str, ParagraphStyle],
     palette: PdfPalette,
     anchor: str = "",
     highlighter: ParticipantHighlighter | None = None,
+    layout: PdfLayout | None = None,
+    turns: _TurnColors | None = None,
+    content_width: float = _CONTENT_WIDTH,
 ) -> list:
     highlighter = highlighter or ParticipantHighlighter()
+    layout = layout or default_layout()
+    turns = turns or _TurnColors(palette)
     if isinstance(block, ParagraphBlock):
         if not block.text.strip():
             return []
+        if layout.speaker_turns:
+            return [_turn_paragraph(block.text, styles, turns, highlighter)]
         return [Paragraph(_rich(block.text, highlighter), styles["body"])]
     if isinstance(block, HeadingBlock):
         style = styles["subheading"] if block.level >= 3 else styles["heading"]
@@ -653,9 +1047,9 @@ def _block_flowables(
             block.items, styles, palette, numbered=False, highlighter=highlighter
         )
     if isinstance(block, ActionTableBlock):
-        return [_action_table(block, styles, palette, highlighter)]
+        return [_action_table(block, styles, palette, highlighter, content_width)]
     if isinstance(block, RiskListBlock):
-        return _risk_flowables(block, styles, palette, highlighter)
+        return _risk_flowables(block, styles, palette, highlighter, content_width)
     return []
 
 
@@ -689,6 +1083,7 @@ def _action_table(
     styles: dict[str, ParagraphStyle],
     palette: PdfPalette,
     highlighter: ParticipantHighlighter | None = None,
+    content_width: float = _CONTENT_WIDTH,
 ) -> Table:
     highlighter = highlighter or ParticipantHighlighter()
     header = [
@@ -710,7 +1105,7 @@ def _action_table(
         )
     owner_width = 1.25 * _INCH
     priority_width = 0.95 * _INCH
-    action_width = _CONTENT_WIDTH - owner_width - priority_width
+    action_width = content_width - owner_width - priority_width
     table = Table(
         data,
         colWidths=[owner_width, action_width, priority_width],
@@ -741,6 +1136,7 @@ def _risk_flowables(
     styles: dict[str, ParagraphStyle],
     palette: PdfPalette,
     highlighter: ParticipantHighlighter | None = None,
+    content_width: float = _CONTENT_WIDTH,
 ) -> list:
     highlighter = highlighter or ParticipantHighlighter()
     flowables: list = []
@@ -759,7 +1155,7 @@ def _risk_flowables(
             )
         if not rows:
             continue
-        card = Table(rows, colWidths=[_CONTENT_WIDTH])
+        card = Table(rows, colWidths=[content_width])
         card.setStyle(
             TableStyle(
                 [

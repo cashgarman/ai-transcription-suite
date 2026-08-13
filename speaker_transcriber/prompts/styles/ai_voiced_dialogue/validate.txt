@@ -1,0 +1,12 @@
+Review this two-host script against the source extracts and return the full corrected script.
+Do not return a comment list.
+
+Check that every substantive topic, decision, number, name, and disagreement in the source is
+somewhere in the script, that nothing was invented, and that statements are attributed to the
+people who actually made them.
+
+Check the form: only `**Host A:**` and `**Host B:**` lines, no headings, no bullet lists, no
+stage directions or bracketed cues, no claim that the recording was cut off.
+
+Add missing substance as new host lines and fix wrong attributions. Never shorten the script or
+delete correct content. If it is already correct, return it unchanged.

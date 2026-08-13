@@ -1,0 +1,12 @@
+Reformat this material as a slide-ready pitch outline.
+
+Use this structure: `#` title, an italic one-line logline, then `##` slides in this order —
+Problem, Insight, Solution, Proof, Market and Competition, Business Model, Ask, Risks and
+Objections.
+
+Each slide is three to six short bullets, one idea per bullet. Convert prose into bullets. Keep
+every fact, number, name, and claim from the source; this is a formatting pass, not a
+summarization pass. Do not invent content, and omit any slide the source has nothing for rather
+than writing a filler bullet.
+
+Output Markdown only, starting with the `#` title.

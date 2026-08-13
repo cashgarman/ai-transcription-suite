@@ -1,0 +1,10 @@
+Reformat this material as a clean reading transcript.
+
+Every spoken turn becomes its own Markdown paragraph in the form
+`**Speaker:** what they said`, in the original order. This is a formatting pass, not a
+summarization pass: never shorten, merge, or drop content, and never invent content.
+
+Remove any headings, summaries, section labels, bullet scaffolding, or commentary that is not
+speech. If a line is not something a person said, drop it rather than rewriting it as dialogue.
+
+Output Markdown only, starting with the first turn.

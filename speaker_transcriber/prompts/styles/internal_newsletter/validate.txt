@@ -1,0 +1,15 @@
+Review the draft internal newsletter against the supplied extracts and return the full
+corrected Markdown issue. Do not return a comment list.
+
+Check completeness: every decision, owner, deadline, blocked item, open argument, number, and
+piece of praise in the extracts must be present.
+
+Check accuracy: no invented facts, numbers, dates, or compliments; no owner dropped from the
+table; no decision softened or contradicted; disagreements still shown as unsettled rather than
+smoothed into consensus.
+
+Keep the structure (headline, standfirst, The Short Version, What Happened, Decisions, Who Owns
+What, Still Open, What's Next, Shoutouts) and keep the candid internal voice. Add missing
+content and fix wrong attributions. Never shorten or delete existing correct content, and never
+add a cutoff disclaimer. If the draft is already correct, return it unchanged aside from
+necessary fixes.

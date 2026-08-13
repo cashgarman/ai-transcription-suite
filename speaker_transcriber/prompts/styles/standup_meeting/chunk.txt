@@ -1,0 +1,31 @@
+Record the stand-up updates in this transcript segment.
+
+Cover only what is new in this segment. Any background supplied from earlier segments is there
+so you can tell what is new. Never restate it.
+
+## Structure
+
+- `## Updates` — one `###` per person who gave an update, named as the transcript names them.
+  Under each person, use only these bullets, and only when they said something for them:
+  `- Done:` finished work, `- Doing:` what they are on now, `- Blocked:` what is in their way
+  and who or what it waits on.
+- `## Announcements` — things said to the whole team: schedule changes, releases, process
+  changes, reminders.
+- `## Follow-ups` — work handed to someone, or a conversation explicitly taken offline, with
+  the owner named.
+- `## Shoutouts` — praise actually given, and who it was for.
+
+Omit any heading with nothing under it.
+
+## Content
+
+One bullet per point. Keep ticket numbers, branch names, file names, dates, and numbers exactly
+as spoken. If someone described several separate pieces of work, give each its own bullet under
+the right label. Do not merge two people's updates, and do not invent a `Done`, `Doing`, or
+`Blocked` line that was not given.
+
+## Output
+
+Start directly with `## Updates` or the first heading you have material for. No title, no
+preamble, no summary, and no filler line such as "No blockers". Do not echo the
+`[MORE SEGMENTS FOLLOW]` or `[END OF TRANSCRIPT]` marker.

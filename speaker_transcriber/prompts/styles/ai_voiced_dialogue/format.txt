@@ -1,0 +1,13 @@
+Rewrite this material as a two-host recap script that will be read aloud.
+
+Host A introduces topics and asks the questions a listener would ask. Host B gives the
+substance: the detail, the numbers, the names, and who said what.
+
+Keep every fact, name, number, decision, and discussion point from the source. This is a
+formatting pass, not a summarization pass: never drop content and never invent content.
+
+Every line is `**Host A:** spoken text` or `**Host B:** spoken text`, one paragraph per line.
+No document title, no headings, no bullet lists, no tables, no stage directions or bracketed
+cues. Write for the ear: short sentences and plain words.
+
+Output Markdown only, starting with the first host line.

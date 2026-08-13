@@ -108,7 +108,7 @@ def test_summarization_worker_retries_after_recovery(monkeypatch) -> None:
     attempts: list[tuple[str, int]] = []
 
     class FlakySummarizer:
-        def __init__(self, model_name: str, *, num_ctx: int) -> None:
+        def __init__(self, model_name: str, *, num_ctx: int, **_kwargs) -> None:
             attempts.append((model_name, num_ctx))
             self.num_ctx = num_ctx
 
@@ -149,7 +149,7 @@ def test_summarization_worker_stops_when_asked(monkeypatch) -> None:
     app = QApplication.instance() or QApplication([])
 
     class AlwaysOom:
-        def __init__(self, model_name: str, *, num_ctx: int) -> None:
+        def __init__(self, model_name: str, *, num_ctx: int, **_kwargs) -> None:
             self.num_ctx = num_ctx
 
         def summarize(self, text: str, **_kwargs) -> str:
@@ -167,6 +167,76 @@ def test_summarization_worker_stops_when_asked(monkeypatch) -> None:
         lambda _request: worker.provide_recovery(OomRecoveryChoice(action=STOP))
     )
 
+    worker.run()
+    app.processEvents()
+
+    assert stopped == [True]
+    assert failed == []
+
+
+def test_summarization_worker_cancels_when_requested(monkeypatch) -> None:
+    pytest.importorskip("PySide6.QtWidgets")
+    from PySide6.QtWidgets import QApplication
+
+    import speaker_transcriber.models.summarization as summarization
+    from speaker_transcriber.errors import ProcessingCancelled
+    from speaker_transcriber.ui.worker import SummarizationWorker
+
+    app = QApplication.instance() or QApplication([])
+    constructed: list[bool] = []
+
+    class UnusedSummarizer:
+        def __init__(self, model_name: str, *, num_ctx: int, **_kwargs) -> None:
+            constructed.append(True)
+
+        def summarize(self, text: str, **_kwargs) -> str:
+            return f"# Notes\n\n{text}"
+
+    monkeypatch.setattr(summarization, "RequirementsSummarizer", UnusedSummarizer)
+
+    worker = SummarizationWorker("Alex talked about the grid.", "qwen3.5:9b", 8192)
+    monkeypatch.setattr(worker, "_smaller_model", lambda: "")
+    stopped: list[bool] = []
+    completed: list[str] = []
+    failed: list[str] = []
+    worker.cancelled.connect(lambda: stopped.append(True))
+    worker.completed.connect(completed.append)
+    worker.failed.connect(failed.append)
+    worker.request_cancel()
+    worker.run()
+    app.processEvents()
+
+    assert constructed == []
+    assert stopped == [True]
+    assert completed == []
+    assert failed == []
+
+
+def test_summarization_worker_stops_mid_run(monkeypatch) -> None:
+    pytest.importorskip("PySide6.QtWidgets")
+    from PySide6.QtWidgets import QApplication
+
+    import speaker_transcriber.models.summarization as summarization
+    from speaker_transcriber.errors import ProcessingCancelled
+    from speaker_transcriber.ui.worker import SummarizationWorker
+
+    app = QApplication.instance() or QApplication([])
+
+    class MidRunCancel:
+        def __init__(self, model_name: str, *, num_ctx: int, **_kwargs) -> None:
+            pass
+
+        def summarize(self, text: str, **_kwargs) -> str:
+            raise ProcessingCancelled()
+
+    monkeypatch.setattr(summarization, "RequirementsSummarizer", MidRunCancel)
+
+    worker = SummarizationWorker("Alex talked about the grid.", "qwen3.5:9b", 8192)
+    monkeypatch.setattr(worker, "_smaller_model", lambda: "")
+    stopped: list[bool] = []
+    failed: list[str] = []
+    worker.cancelled.connect(lambda: stopped.append(True))
+    worker.failed.connect(failed.append)
     worker.run()
     app.processEvents()
 

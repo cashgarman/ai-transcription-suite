@@ -6,6 +6,8 @@ from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 
 from speaker_transcriber.huggingface_setup import load_project_env
+from speaker_transcriber.prompts import DEFAULT_STYLE as DEFAULT_SUMMARY_STYLE
+from speaker_transcriber.prompts import normalize_style
 
 
 RECOMMENDED_WHISPER_MODELS = ("large-v3", "distil-large-v3", "medium")
@@ -96,6 +98,7 @@ class AppSettings:
     ollama_model: str = "qwen3.5:9b"
     ollama_num_ctx: int = DEFAULT_OLLAMA_NUM_CTX
     ollama_oom_policy: str = ""
+    summary_style: str = DEFAULT_SUMMARY_STYLE
     recent_files: list[str] = field(default_factory=list)
 
     def validate(self) -> None:
@@ -138,6 +141,7 @@ class AppSettings:
         self.pdf_engine = engine if engine in PDF_ENGINES else "reportlab"
         pdf_theme = str(self.pdf_theme or "light").strip().lower()
         self.pdf_theme = pdf_theme if pdf_theme in PDF_THEMES else "light"
+        self.summary_style = normalize_style(self.summary_style)
         self.alignment_model = str(self.alignment_model or DEFAULT_ALIGNMENT_MODEL).strip() or DEFAULT_ALIGNMENT_MODEL
         self.diarization_model = (
             str(self.diarization_model or DEFAULT_DIARIZATION_MODEL).strip()

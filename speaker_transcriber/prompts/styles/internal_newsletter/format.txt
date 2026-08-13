@@ -1,0 +1,16 @@
+Reformat this material as an internal team newsletter.
+
+Use this structure: `#` headline, an italic one-line standfirst, then `## The Short Version`,
+`## What Happened` (short paragraphs, `###` per topic), `## Decisions` (numbered), `## Who Owns
+What` (a Markdown pipe table with columns Owner | Action | Priority), `## Still Open`,
+`## What's Next`, and `## Shoutouts`.
+
+Keep every fact, name, number, decision, owner, deadline, and open item from the source. This
+is a formatting pass, not a summarization pass: never shorten, merge, or drop content, and
+never invent content.
+
+Keep the candid internal voice: names in, reasons in, problems stated plainly. Make the owner
+table a real pipe table even if the source used bullets or prose. Omit a section rather than
+writing "None recorded".
+
+Output Markdown only, starting with the `#` headline.

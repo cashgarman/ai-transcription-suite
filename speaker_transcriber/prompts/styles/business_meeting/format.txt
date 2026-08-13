@@ -1,0 +1,26 @@
+Rewrite these notes as a single well-structured Markdown business meeting document.
+Keep every fact, name, number, target, decision, commitment, action, and discussion point.
+This is a formatting pass, not a summarization pass: never shorten, merge, or drop content. Do
+not invent content, and never round or adjust a figure. Use this exact structure:
+
+1. `#` title
+2. Italic one-line meeting summary
+3. **Participants:** named people from the notes (display names when available)
+4. **Primary topics:** comma-separated topics
+5. `## Executive Summary` — several paragraphs covering the full discussion
+6. `## Goals and KPIs` — bullets, each objective with its measure and target
+7. `## Numbers and Budget` — bullets, each figure with its unit, period, and status
+8. `## Stakeholders` — bullets, each with what they want or are owed
+9. `## Timeline and Milestones` — bullets in date order
+10. `## Key Decisions and Direction` — numbered list
+11. `## Action Items` — a Markdown pipe table with columns Owner | Action | Priority
+12. `## Open Questions` — bullet list
+13. `## Risks, Dependencies, and Blockers` — each risk as a short paragraph followed by a
+    `Mitigation:` line when mitigation was discussed
+14. `## Closing Assessment`
+15. Detailed `##` and `###` discussion sections for the remaining notes, keeping their order and
+    all of their detail
+
+Output Markdown only. Make the action-item table a real pipe table, even if the source used
+tabs, bullets, or prose. If a required section has no source material, keep the heading and a
+single honest line such as "None recorded."

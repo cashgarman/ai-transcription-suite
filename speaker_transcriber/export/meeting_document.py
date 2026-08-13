@@ -26,6 +26,8 @@ _INLINE_BOLD = re.compile(r"\*\*(.+?)\*\*|__(.+?)__")
 _INLINE_ITALIC = re.compile(r"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)|(?<!_)_(?!_)(.+?)(?<!_)_(?!_)")
 _INLINE_CODE = re.compile(r"`([^`]+)`")
 _PLACEHOLDER = re.compile(r"optional local ollama summary", re.IGNORECASE)
+_BOLD_TURN = re.compile(r"^\*\*\s*([^*\n]{1,40}?)\s*:?\s*\*\*\s*:?\s*(.*)$", re.DOTALL)
+_PLAIN_TURN = re.compile(r"^([^*:\n]{1,40}?)\s*:\s*(.+)$", re.DOTALL)
 
 _KNOWN_SECTIONS = (
     "executive summary",
@@ -208,6 +210,47 @@ def parse_meeting_markdown(text: str) -> MeetingDocument:
         subtitle=subtitle,
         participants=participants,
         primary_topics=primary_topics,
+        sections=sections,
+    )
+
+
+def split_turn(text: str) -> tuple[str, str] | None:
+    """A script line split into who spoke and what they said, if it is one."""
+    stripped = text.strip()
+    for pattern in (_BOLD_TURN, _PLAIN_TURN):
+        match = pattern.match(stripped)
+        if match is None:
+            continue
+        speaker = match.group(1).strip()
+        if speaker:
+            return speaker, match.group(2).strip()
+    return None
+
+
+def as_script(document: MeetingDocument) -> MeetingDocument:
+    """Give a script back its opening lines.
+
+    A transcript or dialogue has no title, so the parser reads the first spoken
+    line as one. For those styles the line belongs in the body instead.
+    """
+    spoken = [
+        text.strip()
+        for text in (document.title, document.subtitle)
+        if text.strip() and split_turn(text) is not None
+    ]
+    if not spoken:
+        return document
+    blocks: list[Block] = [ParagraphBlock(text) for text in spoken]
+    sections = list(document.sections)
+    if sections and not sections[0].title.strip():
+        sections[0] = Section(sections[0].title, blocks + sections[0].blocks)
+    else:
+        sections.insert(0, Section("", blocks))
+    return MeetingDocument(
+        title="" if split_turn(document.title) is not None else document.title,
+        subtitle="" if split_turn(document.subtitle) is not None else document.subtitle,
+        participants=document.participants,
+        primary_topics=document.primary_topics,
         sections=sections,
     )
 

@@ -481,24 +481,12 @@ def _stylesheet() -> str:
         border-radius: 8px;
     }}
 
-    QWidget#jobProgressHost {{
+    QWidget#jobProgressHost,
+    QWidget#jobProgressBar,
+    QWidget#jobProgressOverlay {{
         background: transparent;
         min-height: 28px;
         max-height: 28px;
-    }}
-
-    QProgressBar#jobProgressBar {{
-        background-color: {Theme.SURFACE_SUNKEN};
-        border: 1px solid {Theme.BORDER};
-        border-radius: 8px;
-        min-height: 28px;
-        max-height: 28px;
-        text-align: left;
-    }}
-
-    QProgressBar#jobProgressBar::chunk {{
-        background-color: rgba(126, 200, 212, 0.42);
-        border-radius: 7px;
     }}
 
     QLabel#jobStageLabel,

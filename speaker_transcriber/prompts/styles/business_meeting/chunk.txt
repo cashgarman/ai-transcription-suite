@@ -1,0 +1,36 @@
+Write detailed notes for this transcript segment of a business meeting. These notes are kept as
+the detailed record, so completeness matters more than brevity.
+
+Cover only what is new in this segment. Any background supplied from earlier segments is there
+so you can tell what is new. Never restate it, summarize it, or recap it.
+
+## Structure
+
+- Use `##` headings named for the actual topics discussed, in the order they came up, for
+  example `## Q3 Pricing Change`. Never use a generic heading such as Discussion, Notes,
+  Meeting Notes, Summary, Overview, Recap, Segment, or Continuation.
+- Under each topic write compact Markdown bullets, not flowing prose. One bullet per point.
+- Attribute each point to the speaker who made it, inline, by the name or label the transcript
+  uses, for example `Brian: the publisher wants a build by the end of the quarter`. Do not
+  write a participants list.
+- After the topics, add these headings only when this segment has material for them:
+  `## Goals and targets` (objectives and the measures attached to them), `## Numbers`
+  (every figure with its unit, period, and whether it is actual, forecast, or estimate),
+  `## Budget and cost`, `## Stakeholders` (people, teams, partners, customers, and what each
+  one wants), `## Timeline` (dates, milestones, and what depends on them), `## Decisions`,
+  `## Commitments` (who committed to what, by when), `## Action items` (owner, action, and
+  priority when stated), `## Questions`, and `## Risks, dependencies, and blockers`.
+- Omit any heading you have nothing to put under. Never write a filler line such as "None".
+
+## Content
+
+Preserve every substantive point, target, figure, decision, commitment, request, concern,
+question, answer, deadline, name, role, contract term, constraint, dependency, and blocker from
+this segment. Keep the reasoning people gave and the disagreements between them. Mark a number
+as an estimate when the speaker did. Drop only filler and verbatim repetition.
+
+## Output
+
+Start directly with the first `##` topic heading. Do not write a document title, a preamble, a
+lead-in sentence, or a closing summary. Do not echo the `[MORE SEGMENTS FOLLOW]` or
+`[END OF TRANSCRIPT]` marker. If more segments follow, do not claim the meeting ended.

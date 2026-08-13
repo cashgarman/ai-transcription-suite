@@ -1,0 +1,15 @@
+Review the draft front matter against the supplied section extracts and return the full
+corrected Markdown front matter. Do not return a comment list.
+
+Check completeness of the overview sections only: named participants, decisions, action items,
+open questions, snags, numbers, and deadlines that appear in the source must be present.
+
+Check accuracy: no invented facts or jokes, no dropped owners, no decision softened into a
+maybe, no contradicted decision, and no cutoff or attribution disclaimers unless they are truly
+warranted.
+
+Keep the structure (title, one-line summary, participants, primary topics, executive summary,
+what we decided, action items table, open questions, snags and worries, closing assessment) and
+keep the warm readable voice; do not rewrite the prose into clipped corporate fragments. Add
+missing content and fix wrong attributions. Never shorten or delete existing correct content,
+and do not add detailed topic sections; the detailed discussion is appended separately.

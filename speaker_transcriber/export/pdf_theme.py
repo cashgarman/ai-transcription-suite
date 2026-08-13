@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from speaker_transcriber.export.meeting_document import (
     HeadingBlock,
     MeetingDocument,
 )
+from speaker_transcriber.prompts import normalize_style
 
 
 PDF_THEMES = ("light", "dark")
@@ -87,13 +88,89 @@ DARK_PALETTE = PdfPalette(
 )
 
 
+@dataclass(frozen=True)
+class StyleAccent:
+    """The colours a summary style tints onto the light or dark palette."""
+
+    accent: str
+    soft: str
+    heading: str
+    table_header: str
+
+
+STYLE_ACCENTS: dict[str, tuple[StyleAccent, StyleAccent]] = {
+    # style id: (light, dark)
+    "meeting_summary": (
+        StyleAccent("#1F7A8C", "#E3F0F3", "#12303A", "#1F7A8C"),
+        StyleAccent("#7EC8D4", "#1F3239", "#7EC8D4", "#245560"),
+    ),
+    "art_meeting": (
+        StyleAccent("#B4543A", "#F7E7E1", "#4A2018", "#B4543A"),
+        StyleAccent("#F0A28B", "#38221C", "#F0A28B", "#6B3325"),
+    ),
+    "design_meeting": (
+        StyleAccent("#6B4FA8", "#EDE7F8", "#2E2150", "#6B4FA8"),
+        StyleAccent("#C4AEF0", "#2A2340", "#C4AEF0", "#46356F"),
+    ),
+    "business_meeting": (
+        StyleAccent("#1F4E79", "#E3ECF5", "#10263B", "#1F4E79"),
+        StyleAccent("#8FB8E0", "#1B2836", "#8FB8E0", "#24466B"),
+    ),
+    "casual_meeting": (
+        StyleAccent("#4C7A50", "#E7F1E6", "#1F3A22", "#4C7A50"),
+        StyleAccent("#9BCE9E", "#1F2C20", "#9BCE9E", "#35573A"),
+    ),
+    "technical_meeting": (
+        StyleAccent("#46596B", "#E8ECF0", "#1E2A34", "#46596B"),
+        StyleAccent("#A9BCCD", "#232C34", "#A9BCCD", "#3A4B5A"),
+    ),
+    "pitch_deck": (
+        StyleAccent("#0E7C86", "#DFF1F2", "#062E33", "#0E7C86"),
+        StyleAccent("#57D6DF", "#123033", "#57D6DF", "#12606A"),
+    ),
+    "internal_newsletter": (
+        StyleAccent("#2A5DB0", "#E5ECF9", "#14294F", "#2A5DB0"),
+        StyleAccent("#9DBDF2", "#1B2740", "#9DBDF2", "#2F4F86"),
+    ),
+    "external_newsletter": (
+        StyleAccent("#A6791F", "#FAF1DC", "#33270A", "#A6791F"),
+        StyleAccent("#E8C46A", "#33290F", "#E8C46A", "#6B5216"),
+    ),
+    "standup_meeting": (
+        StyleAccent("#17868A", "#E1F1F1", "#0F3335", "#17868A"),
+        StyleAccent("#6FD3D6", "#16302F", "#6FD3D6", "#1E5F62"),
+    ),
+    "pure_transcription": (
+        StyleAccent("#4A5568", "#EDEFF2", "#1B2429", "#4A5568"),
+        StyleAccent("#B3BDC8", "#232B33", "#B3BDC8", "#3B4653"),
+    ),
+    "ai_voiced_dialogue": (
+        StyleAccent("#8E3D8A", "#F6E6F5", "#3A153A", "#8E3D8A"),
+        StyleAccent("#E39BDF", "#2F2033", "#E39BDF", "#5E2A5C"),
+    ),
+}
+
+
 def normalize_theme(theme: str | None) -> str:
     name = str(theme or "light").strip().lower()
     return name if name in PDF_THEMES else "light"
 
 
-def palette_for(theme: str | None) -> PdfPalette:
-    return DARK_PALETTE if normalize_theme(theme) == "dark" else LIGHT_PALETTE
+def palette_for(theme: str | None, style: str | None = None) -> PdfPalette:
+    dark = normalize_theme(theme) == "dark"
+    base = DARK_PALETTE if dark else LIGHT_PALETTE
+    accents = STYLE_ACCENTS.get(normalize_style(style))
+    if accents is None:
+        return base
+    accent = accents[1] if dark else accents[0]
+    return replace(
+        base,
+        accent=accent.accent,
+        accent_soft=accent.soft,
+        heading=accent.heading,
+        rule_strong=accent.accent,
+        table_header_background=accent.table_header,
+    )
 
 
 def rgb_fractions(color: str) -> tuple[float, float, float]:

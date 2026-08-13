@@ -14,12 +14,23 @@ from speaker_transcriber.export.meeting_document import (
     ParagraphBlock,
     RiskListBlock,
     Section,
+    as_script,
+    split_turn,
 )
 from speaker_transcriber.export.participants import (
     ParticipantHighlighter,
     build_highlighter,
 )
+from speaker_transcriber.export.pdf_layout import (
+    COMPACT,
+    COVER,
+    MASTHEAD,
+    PLAIN,
+    PdfLayout,
+    layout_for,
+)
 from speaker_transcriber.export.pdf_theme import (
+    PdfPalette,
     anchor_map,
     normalize_theme,
     palette_for,
@@ -75,15 +86,62 @@ def _rich(text: str, highlighter: ParticipantHighlighter) -> str:
     return highlighter.apply(_inline(text), _wrap_participant)
 
 
+class _TurnColors:
+    """One colour per voice in a script, assigned in order of first appearance."""
+
+    def __init__(self, palette: PdfPalette) -> None:
+        self._palette = palette
+        self._assigned: dict[str, str] = {}
+
+    def color_for(self, speaker: str) -> str:
+        key = speaker.strip().lower()
+        if key not in self._assigned:
+            available = self._palette.participants or (self._palette.accent,)
+            self._assigned[key] = available[len(self._assigned) % len(available)]
+        return self._assigned[key]
+
+    def speakers_in(self, document: MeetingDocument) -> list[str]:
+        found: list[str] = []
+        seen: set[str] = set()
+        for section in document.sections:
+            for block in section.blocks:
+                if not isinstance(block, ParagraphBlock):
+                    continue
+                turn = split_turn(block.text)
+                if turn is None or turn[0].lower() in seen:
+                    continue
+                seen.add(turn[0].lower())
+                found.append(turn[0])
+                self.color_for(turn[0])
+        return found
+
+
+def _turn_html(text: str, turns: _TurnColors, highlighter: ParticipantHighlighter) -> str:
+    turn = split_turn(text)
+    if turn is None:
+        return f"<p>{_rich(text, highlighter)}</p>"
+    speaker, spoken = turn
+    color = turns.color_for(speaker)
+    return (
+        "<p class='line'>"
+        f"<span class='host' style='color:{color}'>{_inline(speaker)}</span>"
+        f"{_inline(spoken)}</p>"
+    )
+
+
 def _block_html(
     block: Block,
     anchor: str = "",
     highlighter: ParticipantHighlighter | None = None,
+    layout: PdfLayout | None = None,
+    turns: _TurnColors | None = None,
 ) -> str:
     highlighter = highlighter or ParticipantHighlighter()
     if isinstance(block, ParagraphBlock):
         if not block.text.strip():
             return ""
+        if layout is not None and layout.speaker_turns and turns is not None:
+            return _turn_html(block.text, turns, highlighter)
         return f"<p>{_rich(block.text, highlighter)}</p>"
     if isinstance(block, HeadingBlock):
         level = 3 if block.level >= 3 else 2
@@ -141,6 +199,8 @@ def _section_html(
     anchors: dict[tuple[int, int | None], str],
     with_divider: bool,
     highlighter: ParticipantHighlighter | None = None,
+    layout: PdfLayout | None = None,
+    turns: _TurnColors | None = None,
 ) -> str:
     highlighter = highlighter or ParticipantHighlighter()
     parts: list[str] = []
@@ -150,14 +210,27 @@ def _section_html(
         anchor = anchors.get((section_index, None), "")
         attribute = f' id="{html.escape(anchor)}"' if anchor else ""
         parts.append(f"<h2{attribute}>{_inline(section.title)}</h2>")
+    cards = bool(layout and layout.person_cards) and any(
+        isinstance(block, HeadingBlock) and block.level >= 3
+        for block in section.blocks
+    )
+    open_card = False
     for block_index, block in enumerate(section.blocks):
-        parts.append(
-            _block_html(
-                block,
-                anchors.get((section_index, block_index), ""),
-                highlighter,
-            )
+        rendered = _block_html(
+            block,
+            anchors.get((section_index, block_index), ""),
+            highlighter,
+            layout,
+            turns,
         )
+        if cards and isinstance(block, HeadingBlock) and block.level >= 3:
+            if open_card:
+                parts.append("</div>")
+            parts.append("<div class='person-card'>")
+            open_card = True
+        parts.append(rendered)
+    if open_card:
+        parts.append("</div>")
     parts.append("</section>")
     return "".join(parts)
 
@@ -180,59 +253,123 @@ def _toc_html(document: MeetingDocument) -> str:
     )
 
 
-def meeting_document_html(document: MeetingDocument, theme: str = "light") -> str:
-    theme = normalize_theme(theme)
-    anchors = anchor_map(document)
-    highlighter = build_highlighter(
-        document.participants,
-        palette_for(theme).participants,
-    )
-    header: list[str] = []
-    if document.title.strip():
-        header.append(f"<h1>{_inline(document.title)}</h1>")
+def _front_matter_html(
+    document: MeetingDocument,
+    layout: PdfLayout,
+    highlighter: ParticipantHighlighter,
+    turns: _TurnColors,
+) -> str:
+    if layout.front_matter == PLAIN:
+        return ""
+    title = document.title.strip() or layout.fallback_title
+    if layout.front_matter == MASTHEAD:
+        lede = (
+            f"<p class='lede'>{_inline(document.subtitle)}</p>"
+            if document.subtitle.strip()
+            else ""
+        )
+        return (
+            "<header class='masthead'>"
+            f"<p class='kicker'>{_inline(layout.kicker.upper())}</p>"
+            f"<h1>{_inline(title)}</h1>"
+            f"</header>{lede}"
+        )
+
+    parts: list[str] = []
+    if layout.kicker:
+        parts.append(f"<p class='kicker'>{_inline(layout.kicker.upper())}</p>")
+    parts.append(f"<h1>{_inline(title)}</h1>")
     if document.subtitle.strip():
-        header.append(f"<p class='subtitle'>{_inline(document.subtitle)}</p>")
-    if document.participants.strip():
-        header.append(
+        parts.append(f"<p class='subtitle'>{_inline(document.subtitle)}</p>")
+    if layout.show_participants and document.participants.strip():
+        parts.append(
             f"<p class='meta'><strong>Participants:</strong> "
             f"{_rich(document.participants, highlighter)}</p>"
         )
-    if document.primary_topics.strip():
-        header.append(
+    if layout.show_participants and document.primary_topics.strip():
+        parts.append(
             f"<p class='meta'><strong>Primary topics:</strong> "
             f"{_inline(document.primary_topics)}</p>"
         )
-    body: list[str] = []
-    if header:
-        body.append(f"<header class='doc-header'>{''.join(header)}</header>")
-    body.append(_toc_html(document))
+    speakers = turns.speakers_in(document)
+    if len(speakers) >= 2:
+        legend = " · ".join(
+            f"<span class='host' style='color:{turns.color_for(name)}'>"
+            f"{_inline(name)}</span>"
+            for name in speakers[:4]
+        )
+        parts.append(f"<p class='legend'>{legend}</p>")
+    css_class = "cover" if layout.front_matter == COVER else "doc-header compact"
+    return f"<header class='{css_class}'>{''.join(parts)}</header>"
+
+
+def meeting_document_html(
+    document: MeetingDocument,
+    theme: str = "light",
+    style: str | None = None,
+) -> str:
+    theme = normalize_theme(theme)
+    layout = layout_for(style)
+    palette = palette_for(theme, style)
+    if layout.speaker_turns:
+        document = as_script(document)
+    anchors = anchor_map(document)
+    highlighter = build_highlighter(document.participants, palette.participants)
+    turns = _TurnColors(palette)
+
+    body: list[str] = [_front_matter_html(document, layout, highlighter, turns)]
+    if layout.show_toc:
+        body.append(_toc_html(document))
     divider_pending = False
     for index, section in enumerate(document.sections):
         body.append(
-            _section_html(section, index, anchors, divider_pending, highlighter)
+            _section_html(
+                section,
+                index,
+                anchors,
+                divider_pending and not layout.slide_per_section,
+                highlighter,
+                layout,
+                turns,
+            )
         )
         divider_pending = True
-    running_title = html.escape(document.title.strip() or "Meeting notes")
+    running_title = html.escape(
+        "" if layout.front_matter == MASTHEAD else document.title.strip()
+    )
+    title = document.title.strip() or layout.fallback_title
     return f"""<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8"/>
-<title>{html.escape(document.title or "Meeting notes")}</title>
+<title>{html.escape(title)}</title>
 <style>
-{_stylesheet(theme, running_title)}
+{_stylesheet(theme, running_title, layout, style)}
 </style>
 </head>
-<body class="theme-{theme}">
+<body class="theme-{theme} layout-{layout.kind}">
 {''.join(body)}
 </body>
 </html>
 """
 
 
-def _stylesheet(theme: str, running_title: str) -> str:
-    palette = palette_for(theme)
+def _stylesheet(
+    theme: str,
+    running_title: str,
+    layout: PdfLayout | None = None,
+    style: str | None = None,
+) -> str:
+    layout = layout or layout_for(style)
+    palette = palette_for(theme, style)
+    page_size = "letter landscape" if layout.landscape else "letter"
+    page_number = (
+        f'"{layout.footer_label} " counter(page)'
+        if layout.footer_label
+        else 'counter(page) " of " counter(pages)'
+    )
     return f"""  @page {{
-    size: letter;
+    size: {page_size};
     margin: 1in 0.9in 0.85in 0.9in;
     background: {palette.page};
     @top-left {{
@@ -242,12 +379,13 @@ def _stylesheet(theme: str, running_title: str) -> str:
       color: {palette.muted};
     }}
     @bottom-right {{
-      content: counter(page) " of " counter(pages);
+      content: {page_number};
       font-family: "Segoe UI", Helvetica, Arial, sans-serif;
       font-size: 8.5pt;
       color: {palette.muted};
     }}
   }}
+{_layout_page_rules(layout)}
   body {{
     font-family: "Segoe UI", Helvetica, Arial, sans-serif;
     font-size: 10.5pt;
@@ -319,13 +457,74 @@ def _stylesheet(theme: str, running_title: str) -> str:
   }}
   .participant {{ font-weight: 700; }}
   .risk {{ font-weight: 700; margin: 0 0 3pt 0; }}
-  .mitigation {{ color: {palette.muted}; font-size: 10pt; margin: 0; }}"""
+  .mitigation {{ color: {palette.muted}; font-size: 10pt; margin: 0; }}
+  .kicker {{
+    font-weight: 700;
+    font-size: 9.5pt;
+    letter-spacing: 0.08em;
+    color: {palette.accent};
+    margin: 0 0 10pt 0;
+  }}
+  .cover {{
+    padding-top: 1.6in;
+    break-after: page;
+    border-bottom: none;
+  }}
+  .cover h1 {{ font-size: 30pt; line-height: 1.15; margin-bottom: 12pt; }}
+  .cover .subtitle {{ font-size: 14pt; margin-bottom: 18pt; }}
+  .compact {{ padding-bottom: 8pt; }}
+  .masthead {{
+    background: {palette.table_header_background};
+    color: {palette.table_header_text};
+    padding: 14pt 14pt 16pt 14pt;
+    margin-bottom: 4pt;
+  }}
+  .masthead .kicker {{ color: {palette.table_header_text}; margin-bottom: 6pt; }}
+  .masthead h1 {{ color: {palette.table_header_text}; font-size: 25pt; margin: 0; }}
+  .lede {{
+    font-style: italic;
+    font-size: 13pt;
+    margin: 10pt 0 12pt 0;
+    padding-bottom: 10pt;
+    border-bottom: 1.2pt solid {palette.rule_strong};
+  }}
+  .legend {{ font-size: 9.5pt; margin: 6pt 0 0 0; }}
+  .host {{ font-weight: 700; }}
+  .line {{ padding-left: 54pt; text-indent: -54pt; margin: 0 0 7pt 0; }}
+  .line .host {{ padding-right: 10pt; }}
+  .person-card {{
+    background: {palette.surface};
+    border-left: 2.5pt solid {palette.accent};
+    padding: 8pt 10pt;
+    margin: 0 0 8pt 0;
+    break-inside: avoid;
+  }}
+  .person-card h3 {{ margin-top: 0; color: {palette.heading}; }}"""
+
+
+def _layout_page_rules(layout: PdfLayout) -> str:
+    """Page rules that only some layouts need: bare covers and slide breaks."""
+    rules: list[str] = []
+    if layout.front_matter in (COVER, MASTHEAD):
+        rules.append(
+            "  @page :first {\n"
+            '    @top-left { content: ""; }\n'
+            '    @bottom-right { content: ""; }\n'
+            "  }"
+        )
+    if layout.slide_per_section:
+        rules.append("  .section { break-before: page; }")
+        rules.append("  .section:first-of-type { counter-reset: page 1; }")
+        rules.append("  .section h2 { font-size: 26pt; margin-bottom: 16pt; }")
+        rules.append("  .section li { font-size: 14pt; margin-bottom: 10pt; }")
+    return "\n".join(rules)
 
 
 def export_weasyprint_pdf(
     document: MeetingDocument,
     path: Path,
     theme: str = "light",
+    style: str | None = None,
 ) -> None:
     if not weasyprint_available():
         raise RuntimeError(
@@ -336,6 +535,6 @@ def export_weasyprint_pdf(
 
     destination = Path(path)
     destination.parent.mkdir(parents=True, exist_ok=True)
-    HTML(string=meeting_document_html(document, theme=theme)).write_pdf(
+    HTML(string=meeting_document_html(document, theme=theme, style=style)).write_pdf(
         str(destination)
     )

@@ -1,0 +1,16 @@
+Review the draft external newsletter against the supplied extracts and return the full
+corrected Markdown issue. Do not return a comment list.
+
+Check safety first: remove anything internal that leaked in — blockers, disagreements,
+criticism of a person or partner, costs, internal tooling, unreleased speculation, and anything
+the extracts marked as not for publication. Remove any named individual attached to an internal
+opinion.
+
+Check accuracy: no invented feature, number, date, or customer; no committed date that the
+source did not commit to; nothing described as finished that is still in progress.
+
+Check completeness: every publishable highlight and shipping item in the extracts is present.
+
+Keep the structure (headline, standfirst, In This Issue, Highlights, What's Shipping, What's
+Next, Thank You) and the polished outward voice. Never add a cutoff disclaimer. If the draft is
+already correct, return it unchanged aside from necessary fixes.

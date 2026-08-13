@@ -94,12 +94,60 @@ def test_transcript_cache_saves_and_loads_summary(tmp_path: Path) -> None:
     source.touch()
     markdown = "# Meeting Notes\n\n**Participants:** Alex"
     cache.save_summary(source, markdown)
-    assert cache.summary_path_for(source) == tmp_path / "meeting.summary.md"
+    assert (
+        cache.summary_path_for(source)
+        == tmp_path / "meeting.summary.meeting_summary.md"
+    )
     assert cache.summary_exists(source)
     assert cache.load_summary(source) == markdown
     cache.save_summary(source, "   ")
     assert cache.load_summary(source) is None
     assert not cache.summary_exists(source)
+
+
+def test_each_style_keeps_its_own_summary(tmp_path: Path) -> None:
+    cache = TranscriptCache(directory=tmp_path)
+    source = tmp_path / "meeting.mp4"
+    source.touch()
+    cache.save_summary(source, "# Notes", "meeting_summary")
+    cache.save_summary(source, "# Pitch", "pitch_deck")
+    assert cache.load_summary(source, "meeting_summary") == "# Notes"
+    assert cache.load_summary(source, "pitch_deck") == "# Pitch"
+    assert not cache.summary_exists(source, "internal_newsletter")
+    assert cache.load_summary(source, "internal_newsletter") is None
+
+
+def test_unknown_style_reads_the_default_summary(tmp_path: Path) -> None:
+    cache = TranscriptCache(directory=tmp_path)
+    source = tmp_path / "meeting.mp4"
+    source.touch()
+    cache.save_summary(source, "# Notes")
+    assert cache.load_summary(source, "not-a-style") == "# Notes"
+
+
+def test_legacy_summary_file_reads_as_meeting_notes(tmp_path: Path) -> None:
+    cache = TranscriptCache(directory=tmp_path)
+    source = tmp_path / "meeting.mp4"
+    source.touch()
+    legacy = cache.legacy_summary_path_for(source)
+    legacy.write_text("# Legacy Notes\n", encoding="utf-8")
+    assert cache.summary_exists(source)
+    assert cache.load_summary(source) == "# Legacy Notes"
+    assert not cache.summary_exists(source, "pitch_deck")
+    cache.save_summary(source, "# Fresh Notes")
+    assert not legacy.is_file()
+    assert cache.load_summary(source) == "# Fresh Notes"
+
+
+def test_delete_removes_every_style_summary(tmp_path: Path) -> None:
+    cache = TranscriptCache(directory=tmp_path)
+    source = tmp_path / "meeting.mp4"
+    source.touch()
+    cache.legacy_summary_path_for(source).write_text("# Legacy\n", encoding="utf-8")
+    cache.save_summary(source, "# Pitch", "pitch_deck")
+    cache.save_summary(source, "# Standup", "standup_meeting")
+    cache.delete(source)
+    assert cache.summary_paths(source) == []
 
 
 def test_to_json_dict_serializes_source_files() -> None:

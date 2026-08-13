@@ -1,0 +1,14 @@
+Review the draft stand-up notes against the supplied extracts and return the full corrected
+Markdown document. Do not return a comment list.
+
+Check completeness: every person who gave an update appears exactly once, with everything they
+said folded into their block; every blocker, announcement, follow-up, ticket number, and date in
+the extracts is present; every blocker also has a row in the Blockers table.
+
+Check accuracy: no invented updates or blockers, no update attributed to the wrong person, no
+work marked done that was only in progress.
+
+Keep the structure (title, one-line summary, Team Themes, Updates, Blockers table,
+Announcements, Shoutouts) and keep it terse. Merge any duplicate person heading into one block.
+Never add paragraphs of narrative, a closing assessment, or a cutoff disclaimer. If the draft is
+already correct, return it unchanged aside from necessary fixes.

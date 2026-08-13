@@ -1,0 +1,30 @@
+Pull the newsworthy material out of this transcript segment. This is the raw material for the
+team newsletter, so keep everything a colleague would want to know.
+
+Cover only what is new in this segment. Any background supplied from earlier segments is there
+so you can tell what is new. Never restate it.
+
+## Structure
+
+Use only these `##` headings, and omit any heading this segment has nothing for:
+
+- `## What happened` — progress, changes, launches, breakages, and news, one bullet each.
+- `## Decisions` — what was settled, by whom, and the reason.
+- `## Owners` — who took on what, with the deadline when one was given.
+- `## Still open` — unresolved arguments, blocked work, and things waiting on someone.
+- `## Worth knowing` — process changes, tooling, numbers, dates, and details that affect how
+  people work.
+- `## Shoutouts` — praise that was actually given in the room, and who it was for.
+
+## Content
+
+Compact bullets, one point each. Attribute inline by the name or label the transcript uses, for
+example `Andrew: the sound pass is done for the first two levels`. Keep every name, number,
+date, and deadline. Keep disagreements as disagreements. Drop pure logistics chatter unless it
+changes what someone must do.
+
+## Output
+
+Start directly with the first `##` heading. No headline, no lede, no preamble, no closing
+summary, and no filler line such as "None this segment". Do not echo the
+`[MORE SEGMENTS FOLLOW]` or `[END OF TRANSCRIPT]` marker.

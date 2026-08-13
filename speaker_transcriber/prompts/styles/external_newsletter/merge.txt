@@ -1,0 +1,22 @@
+Write the external newsletter from these section extracts. Your output is the whole issue.
+
+Produce exactly this structure:
+
+1. `#` headline — what the reader is getting, in real words, not "Monthly Update".
+2. An italic one-line standfirst.
+3. `## In This Issue` — two or three sentences of lede that make a reader want the rest.
+4. `## Highlights` — the main body. A `###` subheading per item, each with a short paragraph
+   written from the reader's point of view: what it is, and what it means for them.
+5. `## What's Shipping` — bullets for what is live or arriving, with dates only when the source
+   committed to them.
+6. `## What's Next` — a short paragraph on direction, with no promises the source did not make.
+7. `## Thank You` — a brief closing line to the audience. Omit if it would be empty filler.
+
+Everything under `## Not for publication` in the extracts is excluded. Nothing internal —
+blockers, disagreements, criticism, costs, tooling, speculative plans, individual names
+attached to opinions — appears anywhere in the issue.
+
+Never invent a feature, a number, a date, or a customer. Never turn a "we hope to" into a "we
+will". Omit a section rather than padding it.
+
+Output Markdown only, starting with the `#` headline. Do not append the raw discussion notes.
