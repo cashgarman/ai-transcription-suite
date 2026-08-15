@@ -9,6 +9,22 @@ from speaker_transcriber.audio.ffmpeg import is_supported_media
 from speaker_transcriber.errors import MediaError
 
 
+def _fingerprint(paths: tuple[Path, ...]) -> str:
+    """Identify a recording by location and contents, not just its filename."""
+    payload = []
+    for path in paths:
+        entry: dict[str, object] = {"path": str(path)}
+        try:
+            stat = path.stat()
+        except OSError:
+            entry["missing"] = True
+        else:
+            entry["mtime"] = stat.st_mtime
+            entry["size"] = stat.st_size
+        payload.append(entry)
+    return hashlib.sha256(json.dumps(payload).encode()).hexdigest()[:16]
+
+
 @dataclass(frozen=True)
 class MediaSource:
     paths: tuple[Path, ...]
@@ -50,19 +66,15 @@ class MediaSource:
         return [str(path) for path in self.paths]
 
     def cache_key(self) -> str:
-        if not self.is_multi:
-            return self.primary_path.stem
         ordered = tuple(sorted(self.paths, key=lambda item: str(item)))
-        payload = [
-            {
-                "path": str(path),
-                "mtime": path.stat().st_mtime,
-                "size": path.stat().st_size,
-            }
-            for path in ordered
-        ]
-        digest = hashlib.sha256(json.dumps(payload).encode()).hexdigest()[:16]
-        return f"{ordered[0].stem}_{digest}"
+        return f"{ordered[0].stem}_{_fingerprint(ordered)}"
+
+    def legacy_cache_key(self) -> str | None:
+        """The bare-stem key single files used before fingerprinting.
+
+        Returns None for multi-file sources, which were always fingerprinted.
+        """
+        return None if self.is_multi else self.primary_path.stem
 
     def summary_label(self) -> str:
         if not self.is_multi:

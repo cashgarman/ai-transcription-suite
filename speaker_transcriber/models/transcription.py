@@ -14,6 +14,47 @@ from speaker_transcriber.pipeline.types import ProcessingOptions, RawSegment
 
 LOGGER = logging.getLogger("speaker_transcriber.transcription")
 
+# Whisper often emits these on silent/non-speech audio when VAD is disabled.
+_HALLUCINATION_PHRASES = frozenset(
+    {
+        "thank you",
+        "thank you.",
+        "thanks for watching",
+        "thanks for watching.",
+        "please subscribe",
+        "see you next time",
+        "bye",
+        "goodbye",
+    }
+)
+
+
+def _normalize_phrase(text: str) -> str:
+    return text.strip().lower().rstrip(".")
+
+
+def _looks_like_hallucinated_transcript(
+    segments: list[RawSegment],
+    duration_seconds: float,
+) -> bool:
+    if len(segments) < 3:
+        return False
+    phrases = {_normalize_phrase(segment.text) for segment in segments}
+    if len(phrases) != 1:
+        return False
+    phrase = next(iter(phrases))
+    if phrase not in _HALLUCINATION_PHRASES:
+        return False
+    if len(segments) >= 3:
+        gaps = [
+            segments[index + 1].start - segments[index].start
+            for index in range(len(segments) - 1)
+        ]
+        if gaps and all(25.0 <= gap <= 35.0 for gap in gaps):
+            return True
+    spoken = sum(max(segment.end - segment.start, 0.0) for segment in segments)
+    return spoken < 60.0 and duration_seconds > 120.0
+
 
 class Transcriber:
     def __init__(self, model_manager: ModelManager) -> None:
@@ -96,35 +137,54 @@ class Transcriber:
                     ) from exc
                 raise
             batched_model = BatchedInferencePipeline(model=model)
-            segment_iterator, info = batched_model.transcribe(
-                str(audio_path),
-                batch_size=options.batch_size,
-                language=language,
-                word_timestamps=False,
+            segments, info = self._collect_segments(
+                batched_model,
+                audio_path,
+                options,
+                cancel_event,
+                on_progress,
+                language,
                 vad_filter=True,
             )
-            segments: list[RawSegment] = []
             duration = max(float(info.duration), 0.001)
-            for segment in segment_iterator:
-                if cancel_event.is_set():
-                    raise ProcessingCancelled()
-                text = segment.text.strip()
-                if text:
-                    segments.append(
-                        RawSegment(
-                            start=float(segment.start),
-                            end=float(segment.end),
-                            text=text,
-                        )
+            if not segments or _looks_like_hallucinated_transcript(segments, duration):
+                if segments:
+                    LOGGER.info(
+                        "Discarding likely silent-audio hallucinations; retrying with relaxed VAD"
                     )
-                if on_progress:
-                    on_progress(min(float(segment.end) / duration, 1.0))
-            if not segments:
-                raise NoSpeechError(
+                else:
+                    LOGGER.info(
+                        "No speech with default VAD; retrying with relaxed VAD"
+                    )
+                from faster_whisper.vad import VadOptions
+
+                relaxed_vad = VadOptions(
+                    threshold=0.35,
+                    min_silence_duration_ms=500,
+                    speech_pad_ms=200,
+                )
+                segments, info = self._collect_segments(
+                    batched_model,
+                    audio_path,
+                    options,
+                    cancel_event,
+                    on_progress,
+                    language,
+                    vad_filter=True,
+                    vad_parameters=relaxed_vad,
+                )
+                duration = max(float(info.duration), 0.001)
+            if not segments or _looks_like_hallucinated_transcript(segments, duration):
+                message = (
                     "No speech was detected. Check that the file contains audible speech."
                 )
-            if on_progress:
-                on_progress(1.0)
+                if options.max_input_duration_seconds is not None:
+                    message = (
+                        "No speech was detected in the first 10 minutes of this "
+                        "recording. If the conversation starts later, upgrade to "
+                        "Personal for the full recording."
+                    )
+                raise NoSpeechError(message)
             detected_language = info.language or language or "unknown"
             LOGGER.info(
                 "Transcription complete: %d segments, language=%s",
@@ -138,3 +198,50 @@ class Transcriber:
             if model is not None:
                 del model
             self.model_manager.clear_cuda()
+
+    def _collect_segments(
+        self,
+        batched_model,
+        audio_path: Path,
+        options: ProcessingOptions,
+        cancel_event: threading.Event,
+        on_progress: Callable[[float], None] | None,
+        language: str | None,
+        *,
+        vad_filter: bool,
+        vad_parameters=None,
+        clip_timestamps: list[dict[str, float]] | None = None,
+    ):
+        transcribe_kwargs = {
+            "batch_size": options.batch_size,
+            "language": language,
+            "word_timestamps": False,
+            "vad_filter": vad_filter,
+        }
+        if vad_parameters is not None:
+            transcribe_kwargs["vad_parameters"] = vad_parameters
+        if clip_timestamps is not None:
+            transcribe_kwargs["clip_timestamps"] = clip_timestamps
+        segment_iterator, info = batched_model.transcribe(
+            str(audio_path),
+            **transcribe_kwargs,
+        )
+        segments: list[RawSegment] = []
+        duration = max(float(info.duration), 0.001)
+        for segment in segment_iterator:
+            if cancel_event.is_set():
+                raise ProcessingCancelled()
+            text = segment.text.strip()
+            if text:
+                segments.append(
+                    RawSegment(
+                        start=float(segment.start),
+                        end=float(segment.end),
+                        text=text,
+                    )
+                )
+            if on_progress:
+                on_progress(min(float(segment.end) / duration, 1.0))
+        if segments and on_progress:
+            on_progress(1.0)
+        return segments, info

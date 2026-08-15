@@ -17,6 +17,7 @@ from speaker_transcriber.export.pdf_layout import (
     PdfLayout,
     layout_for,
 )
+from speaker_transcriber.export.pdf_theme import normalize_theme
 
 
 COVER_PAGE_OPTION = "cover_page"
@@ -83,6 +84,22 @@ def applicable_pdf_options(style: str | None) -> tuple[PdfOption, ...]:
         if not option.needs_front_matter
         or front_matter in option.needs_front_matter
     )
+
+
+@dataclass(frozen=True)
+class PdfExportChoices:
+    """Everything the export dialog collects: the colour theme and the toggles."""
+
+    theme: str
+    options: dict[str, bool]
+
+    @classmethod
+    def build(
+        cls,
+        theme: str | None,
+        options: Mapping[str, object] | None = None,
+    ) -> "PdfExportChoices":
+        return cls(normalize_theme(theme), effective_pdf_options(options))
 
 
 def apply_pdf_options(

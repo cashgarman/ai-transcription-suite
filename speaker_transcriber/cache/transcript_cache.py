@@ -24,11 +24,58 @@ LOGGER = logging.getLogger("speaker_transcriber.cache")
 class TranscriptCache:
     def __init__(self, directory: Path | None = None) -> None:
         self.directory = directory or (app_data_dir() / "transcripts")
+        self._migrated: set[str] = set()
 
     def _cache_stem(self, source: Path | list[Path]) -> str:
-        if isinstance(source, Path):
-            return MediaSource.parse(source).cache_key()
-        return MediaSource.parse(source).cache_key()
+        media_source = MediaSource.parse(source)
+        stem = media_source.cache_key()
+        self._adopt_legacy_files(media_source, stem)
+        return stem
+
+    def _adopt_legacy_files(self, media_source: MediaSource, stem: str) -> None:
+        """Rename pre-fingerprint cache files so existing recordings stay cached.
+
+        Older single-file caches were keyed on the filename stem alone, which
+        collided across directories. Files are only adopted when the cached
+        transcript names the same recording.
+        """
+        legacy_stem = media_source.legacy_cache_key()
+        if legacy_stem is None or legacy_stem == stem or legacy_stem in self._migrated:
+            return
+        self._migrated.add(legacy_stem)
+        legacy_transcript = self.directory / f"{legacy_stem}.json"
+        if not legacy_transcript.is_file():
+            return
+        if (self.directory / f"{stem}.json").exists():
+            return
+        if not self._legacy_source_matches(legacy_transcript, media_source):
+            return
+        prefix = f"{legacy_stem}."
+        for path in list(self.directory.iterdir()):
+            if not path.is_file() or not path.name.startswith(prefix):
+                continue
+            target = self.directory / f"{stem}.{path.name[len(prefix):]}"
+            if target.exists():
+                continue
+            try:
+                path.rename(target)
+            except OSError as exc:
+                LOGGER.warning("Could not migrate cache file %s: %s", path, exc)
+
+    def _legacy_source_matches(self, path: Path, media_source: MediaSource) -> bool:
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError, TypeError, json.JSONDecodeError):
+            return False
+        if not isinstance(data, dict):
+            return False
+        recorded = str(data.get("source_file", "")).strip()
+        if not recorded:
+            return False
+        try:
+            return Path(recorded).resolve() == media_source.primary_path
+        except OSError:
+            return False
 
     def path_for(self, source: Path | list[Path]) -> Path:
         return self.directory / f"{self._cache_stem(source)}.json"

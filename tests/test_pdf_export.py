@@ -1,3 +1,4 @@
+import threading
 from pathlib import Path
 
 import pytest
@@ -571,6 +572,7 @@ def make_pdf_worker(tmp_path, markdown: str, style: str):
     worker.pdf_engine = "reportlab"
     worker.pdf_theme = "light"
     worker.style = style
+    worker.cancel_event = threading.Event()
     for name in ("progress", "chunk", "section_break", "summary_ready", "completed"):
         setattr(worker, name, FakeSignal())
     return worker

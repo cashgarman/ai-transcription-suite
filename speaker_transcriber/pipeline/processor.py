@@ -7,8 +7,13 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Callable
 
+from speaker_transcriber.audio.ffmpeg import probe_media_sources
 from speaker_transcriber.audio.preprocessing import normalized_media
 from speaker_transcriber.audio.sources import MediaSource
+from speaker_transcriber.entitlements import (
+    validate_trial_duration_consent,
+    validate_trial_file_count,
+)
 from speaker_transcriber.errors import ProcessingCancelled
 from speaker_transcriber.models.alignment import Aligner
 from speaker_transcriber.models.diarization import Diarizer
@@ -62,6 +67,12 @@ class TranscriptionProcessor:
         started = time.monotonic()
         media_source = MediaSource.parse(input_path)
         media_source.validate()
+        validate_trial_file_count(list(media_source.paths))
+        probed_duration = probe_media_sources(list(media_source.paths)).duration_seconds
+        validate_trial_duration_consent(
+            probed_duration,
+            options.max_input_duration_seconds,
+        )
         decisions: list[str] = []
         raw_segments: list[RawSegment] = []
         language = options.language
@@ -142,7 +153,12 @@ class TranscriptionProcessor:
                 )
                 emit("extracting_audio", value, message)
 
-            with normalized_media(media_source.paths, cancel, extraction_progress) as (
+            with normalized_media(
+                media_source.paths,
+                cancel,
+                extraction_progress,
+                max_duration_seconds=options.max_input_duration_seconds,
+            ) as (
                 audio_path,
                 media,
             ):
@@ -285,6 +301,13 @@ class TranscriptionProcessor:
                         "alignment_device": options.alignment_device,
                         "diarization_device": options.diarization_device,
                         "decisions": decisions,
+                        "trial_truncated": bool(
+                            options.max_input_duration_seconds is not None
+                            and options.source_duration_seconds is not None
+                            and options.source_duration_seconds
+                            > options.max_input_duration_seconds
+                        ),
+                        "source_duration_seconds": options.source_duration_seconds,
                     },
                 )
                 emit("formatting", 1.0, "Transcript ready")

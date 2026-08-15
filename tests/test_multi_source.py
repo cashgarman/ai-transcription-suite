@@ -79,7 +79,15 @@ def test_normalized_media_merges_multiple_sources(tmp_path: Path, monkeypatch) -
     def fake_probe(source):
         return ffmpeg.MediaInfo(2.0, True)
 
-    def fake_extract(source, destination, duration_seconds, cancel_event, on_progress=None):
+    def fake_extract(
+        source,
+        destination,
+        duration_seconds,
+        cancel_event,
+        on_progress=None,
+        *,
+        max_duration_seconds=None,
+    ):
         calls.append(Path(source))
         Path(destination).write_bytes(f"chunk-{Path(source).name}".encode())
 

@@ -12,7 +12,14 @@ from speaker_transcriber.huggingface_compat import patch_hf_hub_use_auth_token
 from speaker_transcriber.huggingface_setup import configure_huggingface_client
 from speaker_transcriber.pytorch_compat import patch_torch_load_weights_only
 from speaker_transcriber.speechbrain_compat import patch_speechbrain_lazy_modules
-from speaker_transcriber.errors import ProcessingCancelled, SpeakerTranscriberError
+from speaker_transcriber.audio.ffmpeg import probe_media
+from speaker_transcriber.entitlements import (
+    TRIAL_MAX_DURATION_SECONDS,
+    duration_consent_error_message,
+    is_licensed,
+    validate_trial_file_count,
+)
+from speaker_transcriber.errors import ProcessingCancelled, SpeakerTranscriberError, TrialLimitError
 from speaker_transcriber.export import EXPORTERS, export_result
 from speaker_transcriber.logging_config import configure_logging, log_system_information
 from speaker_transcriber.pipeline.processor import TranscriptionProcessor
@@ -55,6 +62,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Hugging Face token (prefer HF_TOKEN to avoid process-list exposure)",
     )
     parser.add_argument("--verbose", action="store_true")
+    parser.add_argument(
+        "--truncate-trial",
+        action="store_true",
+        help="Transcribe only the first 10 minutes when the trial limit applies",
+    )
     return parser
 
 
@@ -74,6 +86,22 @@ def main(argv: list[str] | None = None) -> int:
     logger = configure_logging(arguments.verbose)
     log_system_information(logger)
     settings_store = SettingsStore()
+    if not arguments.input.is_file():
+        parser.error(f"input file not found: {arguments.input}")
+    validate_trial_file_count([arguments.input])
+    probed_duration = probe_media(arguments.input).duration_seconds
+    max_input_duration = None
+    source_duration = None
+    if not is_licensed() and probed_duration > TRIAL_MAX_DURATION_SECONDS:
+        if arguments.truncate_trial:
+            max_input_duration = TRIAL_MAX_DURATION_SECONDS
+            source_duration = probed_duration
+        else:
+            print(
+                duration_consent_error_message(probed_duration, for_cli=True),
+                file=sys.stderr,
+            )
+            return 1
     options = ProcessingOptions(
         model=arguments.model,
         device=arguments.device,
@@ -88,6 +116,8 @@ def main(argv: list[str] | None = None) -> int:
         alignment_model=arguments.alignment_model,
         diarization_model=arguments.diarization_model,
         hf_token=settings_store.get_hf_token(arguments.hf_token),
+        max_input_duration_seconds=max_input_duration,
+        source_duration_seconds=source_duration,
     )
     cancel_event = threading.Event()
     last_percent = -1

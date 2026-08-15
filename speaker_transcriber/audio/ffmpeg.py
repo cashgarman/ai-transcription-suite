@@ -114,6 +114,8 @@ def extract_audio(
     duration_seconds: float,
     cancel_event: threading.Event,
     on_progress: Callable[[float], None] | None = None,
+    *,
+    max_duration_seconds: float | None = None,
 ) -> None:
     ffmpeg = _require_executable("ffmpeg")
     command = [
@@ -123,18 +125,24 @@ def extract_audio(
         "-y",
         "-i",
         str(source),
-        "-vn",
-        "-ac",
-        "1",
-        "-ar",
-        "16000",
-        "-c:a",
-        "pcm_s16le",
-        "-progress",
-        "pipe:1",
-        "-nostats",
-        str(destination),
     ]
+    if max_duration_seconds is not None and max_duration_seconds > 0:
+        command.extend(["-t", str(max_duration_seconds)])
+    command.extend(
+        [
+            "-vn",
+            "-ac",
+            "1",
+            "-ar",
+            "16000",
+            "-c:a",
+            "pcm_s16le",
+            "-progress",
+            "pipe:1",
+            "-nostats",
+            str(destination),
+        ]
+    )
     LOGGER.info("Extracting normalized audio from %s", Path(source).name)
     process = subprocess.Popen(
         command,

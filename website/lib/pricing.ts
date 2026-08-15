@@ -23,7 +23,7 @@ export const PLANS: Plan[] = [
     pitch:
       "The whole application, not a crippled preview. Every model, every export, every notes style.",
     features: [
-      "Ten minutes of audio or video per file",
+      "One file at a time, up to ten minutes (or the first ten of longer recordings)",
       "Speaker diarization and word-level timestamps",
       "All six transcript formats plus PDF notes",
       "All twelve notes styles",
@@ -31,7 +31,7 @@ export const PLANS: Plan[] = [
     ],
     cta: { label: "Download the trial", href: "/download" },
     featured: true,
-    note: "The only limit is length. Nothing is watermarked or withheld.",
+    note: "The only limits are one file and length. Nothing is watermarked or withheld.",
   },
   {
     id: "personal",

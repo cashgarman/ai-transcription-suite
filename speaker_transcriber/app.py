@@ -85,6 +85,16 @@ def main() -> int:
                 load_prompts()
 
                 self.status.emit("Loading interface…", 0.75)
+                try:
+                    import cryptography  # noqa: F401
+                except ImportError as exc:
+                    raise RuntimeError(
+                        "Missing dependency 'cryptography'. Install it in this Python "
+                        "environment with:\n\n"
+                        "  python -m pip install \"cryptography>=43\"\n\n"
+                        "If you use the project virtual environment, run:\n"
+                        "  .\\.venv\\Scripts\\python.exe -m pip install \"cryptography>=43\""
+                    ) from exc
                 from speaker_transcriber.ui.main_window import MainWindow
 
                 self.completed.emit(

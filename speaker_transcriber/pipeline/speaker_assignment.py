@@ -83,18 +83,22 @@ def assign_word(
 def words_from_segments(segments: list[RawSegment]) -> list[Word]:
     words: list[Word] = []
     for segment in segments:
-        if segment.words:
-            for item in segment.words:
-                value = str(item.get("word", "")).strip()
-                if value and "start" in item and "end" in item:
-                    words.append(
-                        Word(
-                            word=value,
-                            start=float(item["start"]),
-                            end=float(item["end"]),
-                        )
+        timed_words: list[Word] = []
+        for item in segment.words or []:
+            value = str(item.get("word", "")).strip()
+            if value and "start" in item and "end" in item:
+                timed_words.append(
+                    Word(
+                        word=value,
+                        start=float(item["start"]),
+                        end=float(item["end"]),
                     )
+                )
+        if timed_words:
+            words.extend(timed_words)
         elif segment.text:
+            # Alignment can return a segment whose words all lack usable text or
+            # timestamps; keep the speech as one uncertain block rather than lose it.
             words.append(
                 Word(
                     word=segment.text.strip(),

@@ -5,6 +5,7 @@ import os
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 
+from speaker_transcriber.export.pdf_theme import normalize_theme
 from speaker_transcriber.huggingface_setup import load_project_env
 from speaker_transcriber.prompts import DEFAULT_STYLE as DEFAULT_SUMMARY_STYLE
 from speaker_transcriber.prompts import (
@@ -20,12 +21,22 @@ SUPPORTED_COMPUTE_TYPES = ("int8_float16", "float16", "int8", "float32")
 SUPPORTED_DEVICES = ("cuda", "cpu")
 SPEAKER_MODES = ("automatic", "exact", "minmax")
 PDF_ENGINES = ("reportlab", "weasyprint")
-PDF_THEMES = ("light", "dark")
 OLLAMA_CTX_CHOICES = (4096, 8192, 16384, 32768, 65536, 131072)
 DEFAULT_OLLAMA_NUM_CTX = 8192
 OLLAMA_OOM_POLICIES = ("", "reduce_ctx", "smaller_model")
 DEFAULT_ALIGNMENT_MODEL = "auto"
 DEFAULT_DIARIZATION_MODEL = "pyannote/speaker-diarization-3.1"
+
+# Placeholder until checkout is wired on the marketing site.
+DEFAULT_PURCHASE_URL = "https://summit-transcriber.com/#pricing"
+
+
+def purchase_url() -> str:
+    return os.environ.get("SUMMIT_PURCHASE_URL", DEFAULT_PURCHASE_URL).strip()
+
+
+def license_file_path() -> Path:
+    return app_data_dir() / "license.summit"
 
 
 def _string_list(value: object) -> list[str]:
@@ -171,8 +182,7 @@ class AppSettings:
         self.ollama_oom_policy = policy if policy in OLLAMA_OOM_POLICIES else ""
         engine = str(self.pdf_engine or "reportlab").strip().lower()
         self.pdf_engine = engine if engine in PDF_ENGINES else "reportlab"
-        pdf_theme = str(self.pdf_theme or "light").strip().lower()
-        self.pdf_theme = pdf_theme if pdf_theme in PDF_THEMES else "light"
+        self.pdf_theme = normalize_theme(self.pdf_theme)
         self.pdf_options = _clean_pdf_options(self.pdf_options)
         self.summary_style = normalize_style(self.summary_style)
         self.summary_excluded_sections = _clean_excluded_sections(

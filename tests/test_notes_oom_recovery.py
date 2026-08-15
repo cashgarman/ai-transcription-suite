@@ -280,3 +280,82 @@ def test_saved_policy_is_applied_only_when_usable(
         assert choice is not None
         assert choice.action == expected
         assert choice.always is True
+
+
+def test_pdf_export_worker_cancels_before_starting(monkeypatch) -> None:
+    pytest.importorskip("PySide6.QtWidgets")
+    from PySide6.QtWidgets import QApplication
+
+    import speaker_transcriber.models.summarization as summarization
+    from speaker_transcriber.ui.worker import PdfExportWorker
+
+    app = QApplication.instance() or QApplication([])
+    constructed: list[bool] = []
+
+    class UnusedSummarizer:
+        def __init__(self, *_args, **_kwargs) -> None:
+            constructed.append(True)
+
+    monkeypatch.setattr(summarization, "RequirementsSummarizer", UnusedSummarizer)
+
+    worker = PdfExportWorker(
+        "notes.pdf",
+        "Alex talked about the grid.",
+        model_name="qwen3.5:9b",
+        num_ctx=8192,
+    )
+    stopped: list[bool] = []
+    failed: list[str] = []
+    worker.cancelled.connect(lambda: stopped.append(True))
+    worker.failed.connect(failed.append)
+
+    worker.request_cancel()
+    worker.run()
+    app.processEvents()
+
+    assert constructed == []
+    assert stopped == [True]
+    assert failed == []
+
+
+def test_pdf_export_worker_unblocks_the_oom_wait_on_cancel(monkeypatch) -> None:
+    """Closing the window while the OOM prompt is open must not strand the thread."""
+    pytest.importorskip("PySide6.QtWidgets")
+    from PySide6.QtWidgets import QApplication
+
+    import speaker_transcriber.models.summarization as summarization
+    from speaker_transcriber.ui.worker import PdfExportWorker
+
+    app = QApplication.instance() or QApplication([])
+
+    class AlwaysOom:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        def summarize(self, _text: str, **_kwargs) -> str:
+            raise summarization.OllamaOutOfMemoryError("out of memory")
+
+    monkeypatch.setattr(summarization, "RequirementsSummarizer", AlwaysOom)
+
+    worker = PdfExportWorker(
+        "notes.pdf",
+        "Alex talked about the grid.",
+        model_name="qwen3.5:9b",
+        num_ctx=8192,
+    )
+    monkeypatch.setattr(worker, "_smaller_model", lambda: "")
+    stopped: list[bool] = []
+    failed: list[str] = []
+    worker.cancelled.connect(lambda: stopped.append(True))
+    worker.failed.connect(failed.append)
+    # The user never answers the dialog; the window is closed instead.
+    worker.oom_detected.connect(
+        lambda _request: threading.Timer(0.05, worker.request_cancel).start()
+    )
+
+    worker.run()
+    app.processEvents()
+
+    assert stopped == [True]
+    assert failed == []
+    assert worker.cancel_event.is_set()

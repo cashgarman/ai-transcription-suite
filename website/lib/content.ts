@@ -143,7 +143,7 @@ export const FAQS: Faq[] = [
   {
     question: "What does the free trial actually include?",
     answer:
-      "Everything. Every Whisper model, speaker diarization, all six export formats, PDF notes, and all twelve notes styles. The single restriction is that each audio or video file is transcribed up to ten minutes. Nothing is watermarked, nothing expires, and there is no account to create.",
+      "Everything. Every Whisper model, speaker diarization, all six export formats, PDF notes, and all twelve notes styles. The trial transcribes one file at a time. Recordings longer than ten minutes can be transcribed for the first ten minutes; Personal unlocks the full recording and multi-file merge. Nothing is watermarked, nothing expires, and there is no account to create.",
   },
   {
     question: "What hardware do I need?",

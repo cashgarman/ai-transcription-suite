@@ -2,6 +2,26 @@ class SpeakerTranscriberError(Exception):
     """Base class for user-facing application errors."""
 
 
+class TrialLimitReason:
+    MULTI_FILE = "multi_file"
+    DURATION_CONSENT = "duration_consent"
+
+
+class TrialLimitError(SpeakerTranscriberError):
+    """Raised when trial restrictions block an operation."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        reason: str,
+        full_duration_seconds: float | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.reason = reason
+        self.full_duration_seconds = full_duration_seconds
+
+
 class ProcessingCancelled(SpeakerTranscriberError):
     """Raised when cancellation is observed at a safe boundary."""
 

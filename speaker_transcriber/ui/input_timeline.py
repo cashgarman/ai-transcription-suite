@@ -106,9 +106,35 @@ class InputTimelineWidget(QWidget):
             return segment.duration_seconds
         return 1.0
 
+    def duration_for_path(self, path: Path) -> float | None:
+        resolved = str(path.resolve())
+        for segment in self._segments:
+            if str(segment.path.resolve()) == resolved:
+                if segment.duration_seconds is not None and segment.duration_seconds > 0:
+                    return segment.duration_seconds
+                return None
+        return None
+
+    def total_duration(self) -> float:
+        return self._total_duration()
+
+    def has_unknown_durations(self) -> bool:
+        return any(
+            segment.duration_seconds is None or segment.duration_seconds <= 0
+            for segment in self._segments
+        )
+
+    def known_total_duration(self) -> float | None:
+        if not self._segments or self.has_unknown_durations():
+            return None
+        return sum(segment.duration_seconds or 0.0 for segment in self._segments)
+
     def _total_duration(self) -> float:
         if not self._segments:
             return 0.0
+        known = self.known_total_duration()
+        if known is not None:
+            return known
         return sum(self._effective_duration(segment) for segment in self._segments)
 
     def _layout_segments(self) -> list[tuple[int, int, int, int]]:

@@ -501,6 +501,17 @@ def _stylesheet() -> str:
         min-width: 2.6em;
     }}
 
+    QLabel#entitlementModeLabel,
+    QLabel#trialHintLabel {{
+        background: transparent;
+        color: {Theme.TEXT_MUTED};
+        font-size: 11px;
+    }}
+
+    QLabel#entitlementModeLabel[testMode="true"] {{
+        color: {Theme.ACCENT};
+    }}
+
     QProgressBar#cpuMeter,
     QProgressBar#ramMeter,
     QProgressBar#vramMeter,

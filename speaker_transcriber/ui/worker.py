@@ -6,7 +6,7 @@ import threading
 
 from PySide6.QtCore import QThread, Signal
 
-from speaker_transcriber.errors import ProcessingCancelled
+from speaker_transcriber.errors import NoSpeechError, ProcessingCancelled, TrialLimitError
 from speaker_transcriber.models.summarization import SummarizationProgress
 from speaker_transcriber.pipeline.processor import TranscriptionProcessor
 from speaker_transcriber.pipeline.types import ProcessingOptions, ProgressUpdate
@@ -103,6 +103,7 @@ class ProcessingWorker(QThread):
     completed = Signal(object)
     cancelled = Signal(object)
     failed = Signal(str)
+    trial_blocked = Signal(object)
 
     def __init__(
         self,
@@ -151,6 +152,12 @@ class ProcessingWorker(QThread):
             self.completed.emit(result)
         except ProcessingCancelled as exc:
             self.cancelled.emit(exc.partial_result)
+        except NoSpeechError as exc:
+            LOGGER.warning("Transcription found no speech: %s", exc)
+            self.failed.emit(str(exc))
+        except TrialLimitError as exc:
+            LOGGER.warning("Trial limit blocked transcription: %s", exc)
+            self.trial_blocked.emit(exc)
         except Exception as exc:
             LOGGER.exception("Processing worker failed")
             self.failed.emit(str(exc))
@@ -362,22 +369,33 @@ class PdfExportWorker(QThread, NotesMemoryRecoveryMixin):
         self.style = normalize_style(style)
         self.excluded_sections = tuple(excluded_sections)
         self.pdf_options = dict(pdf_options) if pdf_options else None
+        self.cancel_event = threading.Event()
         self._init_recovery()
+
+    def request_cancel(self) -> None:
+        self.cancel_event.set()
+        self.provide_recovery(OomRecoveryChoice(action=STOP))
 
     def run(self) -> None:
         from speaker_transcriber.models.summarization import OllamaOutOfMemoryError
 
         while True:
             try:
+                if self.cancel_event.is_set():
+                    self.cancelled.emit()
+                    return
                 self._export()
+                return
+            except ProcessingCancelled:
+                self.cancelled.emit()
                 return
             except OllamaOutOfMemoryError as exc:
                 LOGGER.warning("PDF notes generation ran out of GPU memory: %s", exc)
-                if self._apply_recovery(exc):
-                    self.section_break.emit()
-                    continue
-                self.cancelled.emit()
-                return
+                if self.cancel_event.is_set() or not self._apply_recovery(exc):
+                    self.cancelled.emit()
+                    return
+                self.section_break.emit()
+                continue
             except Exception as exc:
                 LOGGER.exception("PDF export worker failed")
                 self.failed.emit(str(exc))
@@ -421,6 +439,7 @@ class PdfExportWorker(QThread, NotesMemoryRecoveryMixin):
                 num_ctx=self.num_ctx,
                 style=self.style,
                 excluded_sections=self.excluded_sections,
+                cancel_event=self.cancel_event,
             )
 
             def on_summarize_progress(fraction: float, message: str) -> None:
@@ -466,6 +485,7 @@ class PdfExportWorker(QThread, NotesMemoryRecoveryMixin):
                     num_ctx=self.num_ctx,
                     style=self.style,
                     excluded_sections=self.excluded_sections,
+                    cancel_event=self.cancel_event,
                 )
             emit_progress(self.SUMMARIZE_END, "Formatting meeting notes…")
 
@@ -479,6 +499,8 @@ class PdfExportWorker(QThread, NotesMemoryRecoveryMixin):
             )
             document = parse_meeting_markdown(markdown)
 
+        if self.cancel_event.is_set():
+            raise ProcessingCancelled()
         self.summary_ready.emit(markdown)
         emit_progress(self.FORMAT_END, "Writing PDF…")
         export_meeting_pdf(

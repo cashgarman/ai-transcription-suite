@@ -51,7 +51,10 @@ def test_transcript_cache_uses_video_stem(tmp_path: Path) -> None:
 
     cache.save(result)
 
-    assert cache.path_for(source) == tmp_path / "meeting.json"
+    cached = cache.path_for(source)
+    assert cached.parent == tmp_path
+    assert cached.name.startswith("meeting_")
+    assert cached.suffix == ".json"
     assert cache.exists(source)
     loaded = cache.load(source)
     assert loaded is not None
@@ -94,10 +97,10 @@ def test_transcript_cache_saves_and_loads_summary(tmp_path: Path) -> None:
     source.touch()
     markdown = "# Meeting Notes\n\n**Participants:** Alex"
     cache.save_summary(source, markdown)
-    assert (
-        cache.summary_path_for(source)
-        == tmp_path / "meeting.summary.meeting_summary.md"
-    )
+    summary_path = cache.summary_path_for(source)
+    assert summary_path.parent == tmp_path
+    assert summary_path.name.startswith("meeting_")
+    assert summary_path.name.endswith(".summary.meeting_summary.md")
     assert cache.summary_exists(source)
     assert cache.load_summary(source) == markdown
     cache.save_summary(source, "   ")
@@ -173,3 +176,71 @@ def test_metadata_speaker_names_round_trip() -> None:
     payload["metadata"]["speaker_display_names"] = {"SPEAKER_00": "Alice"}
     restored = from_json_dict(payload)
     assert restored.speakers["SPEAKER_00"] == "Alice"
+
+
+def _recording(directory: Path, name: str, contents: bytes) -> Path:
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / name
+    path.write_bytes(contents)
+    return path
+
+
+def test_same_filename_in_two_folders_does_not_share_a_cache(tmp_path: Path) -> None:
+    cache = TranscriptCache(directory=tmp_path / "cache")
+    first = _recording(tmp_path / "monday", "meeting.mp4", b"first")
+    second = _recording(tmp_path / "tuesday", "meeting.mp4", b"second-recording")
+
+    cache.save(sample_result(str(first.resolve())))
+
+    assert cache.path_for(first) != cache.path_for(second)
+    assert cache.exists(first)
+    assert not cache.exists(second)
+
+
+def test_replacing_a_recording_invalidates_its_cache(tmp_path: Path) -> None:
+    cache = TranscriptCache(directory=tmp_path / "cache")
+    source = _recording(tmp_path, "meeting.mp4", b"original")
+    cache.save(sample_result(str(source.resolve())))
+    assert cache.exists(source)
+
+    source.write_bytes(b"a different recording entirely")
+
+    assert not cache.exists(source)
+
+
+def test_legacy_stem_named_cache_is_adopted(tmp_path: Path) -> None:
+    directory = tmp_path / "cache"
+    directory.mkdir()
+    source = _recording(tmp_path, "meeting.mp4", b"audio")
+    result = sample_result(str(source.resolve()))
+    (directory / "meeting.json").write_text(
+        json.dumps(to_json_dict(result)), encoding="utf-8"
+    )
+    (directory / "meeting.summary.meeting_summary.md").write_text(
+        "# Notes\n", encoding="utf-8"
+    )
+
+    cache = TranscriptCache(directory=directory)
+
+    assert cache.exists(source)
+    loaded = cache.load(source)
+    assert loaded is not None
+    assert loaded.segments[0].text == "Welcome."
+    assert cache.load_summary(source) == "# Notes"
+    assert not (directory / "meeting.json").exists()
+
+
+def test_legacy_cache_for_a_different_recording_is_left_alone(tmp_path: Path) -> None:
+    directory = tmp_path / "cache"
+    directory.mkdir()
+    stranger = _recording(tmp_path / "elsewhere", "meeting.mp4", b"other")
+    (directory / "meeting.json").write_text(
+        json.dumps(to_json_dict(sample_result(str(stranger.resolve())))),
+        encoding="utf-8",
+    )
+    source = _recording(tmp_path / "mine", "meeting.mp4", b"mine")
+
+    cache = TranscriptCache(directory=directory)
+
+    assert not cache.exists(source)
+    assert (directory / "meeting.json").exists()

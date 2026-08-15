@@ -91,3 +91,46 @@ def test_extract_audio_reports_ffmpeg_progress(tmp_path, monkeypatch) -> None:
         progress.append,
     )
     assert progress == [0.5, 1.0]
+
+
+def test_extract_audio_passes_duration_limit_to_ffmpeg(tmp_path, monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeProcess:
+        def __init__(self) -> None:
+            self.stdout = io.StringIO("progress=end\n")
+            self.stderr = io.StringIO("")
+            self.returncode = None
+
+        def poll(self):
+            if self.stdout.tell() == len(self.stdout.getvalue()):
+                return 0
+            return None
+
+        def wait(self, timeout=None):
+            self.returncode = 0
+            return 0
+
+        def terminate(self):
+            self.returncode = 0
+
+        def kill(self):
+            self.returncode = 1
+
+    def fake_popen(command, **kwargs):
+        captured["command"] = list(command)
+        return FakeProcess()
+
+    monkeypatch.setattr(ffmpeg, "_require_executable", lambda name: name)
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+    ffmpeg.extract_audio(
+        tmp_path / "input.mp4",
+        tmp_path / "audio.wav",
+        600.0,
+        threading.Event(),
+        None,
+        max_duration_seconds=600.0,
+    )
+    command = captured["command"]
+    assert "-t" in command
+    assert command[command.index("-t") + 1] == "600.0"

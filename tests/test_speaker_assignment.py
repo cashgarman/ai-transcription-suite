@@ -1,4 +1,8 @@
-from speaker_transcriber.pipeline.speaker_assignment import assign_speakers, assign_word
+from speaker_transcriber.pipeline.speaker_assignment import (
+    assign_speakers,
+    assign_word,
+    words_from_segments,
+)
 from speaker_transcriber.pipeline.types import DiarizationSegment, RawSegment, Word
 
 
@@ -56,3 +60,44 @@ def test_words_inside_one_whisper_segment_receive_different_speakers() -> None:
     ]
     assigned = assign_speakers(segments, turns)
     assert [word.speaker for word in assigned] == ["SPEAKER_00", "SPEAKER_01"]
+
+
+def test_segment_survives_when_every_word_is_blank() -> None:
+    """Alignment can return timestamped words with empty text; keep the speech."""
+    segments = [
+        RawSegment(
+            0.0,
+            2.0,
+            "Hello there",
+            words=[
+                {"word": "   ", "start": 0.1, "end": 0.6},
+                {"word": "", "start": 1.2, "end": 1.8},
+            ],
+        )
+    ]
+    words = words_from_segments(segments)
+    assert [word.word for word in words] == ["Hello there"]
+    assert words[0].uncertain
+
+
+def test_segment_survives_when_every_word_lacks_timestamps() -> None:
+    segments = [
+        RawSegment(0.0, 2.0, "Hello there", words=[{"word": "Hello"}, {"word": "there"}])
+    ]
+    words = words_from_segments(segments)
+    assert [word.word for word in words] == ["Hello there"]
+
+
+def test_partially_usable_words_do_not_trigger_the_segment_fallback() -> None:
+    segments = [
+        RawSegment(
+            0.0,
+            2.0,
+            "Hello there",
+            words=[
+                {"word": "Hello", "start": 0.1, "end": 0.6},
+                {"word": "there"},
+            ],
+        )
+    ]
+    assert [word.word for word in words_from_segments(segments)] == ["Hello"]

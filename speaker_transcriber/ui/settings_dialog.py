@@ -16,7 +16,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from speaker_transcriber.config import AppSettings, SettingsStore
+from speaker_transcriber.config import AppSettings, SettingsStore, license_file_path
+from speaker_transcriber.ui.license_dialog import prompt_import_license
 
 
 class SettingsDialog(QDialog):
@@ -68,6 +69,13 @@ class SettingsDialog(QDialog):
         )
         self.use_cached_transcript = QCheckBox()
         self.use_cached_transcript.setChecked(settings.use_cached_transcript)
+        self.license_status = QLabel()
+        self._refresh_license_status()
+        import_license = QPushButton("Import license…")
+        import_license.clicked.connect(self._import_license)
+        license_row = QHBoxLayout()
+        license_row.addWidget(self.license_status, 1)
+        license_row.addWidget(import_license)
 
         form = QFormLayout()
         form.addRow("Compute type", self.compute_type)
@@ -80,6 +88,7 @@ class SettingsDialog(QDialog):
         form.addRow("Output directory", output_row)
         form.addRow("Hugging Face token", self.hf_token)
         form.addRow("Use cached transcript", self.use_cached_transcript)
+        form.addRow("License", license_row)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Save
@@ -99,6 +108,17 @@ class SettingsDialog(QDialog):
         )
         if directory:
             self.output_directory.setText(directory)
+
+    def _refresh_license_status(self) -> None:
+        path = license_file_path()
+        if path.is_file():
+            self.license_status.setText(f"Personal license installed ({path.name})")
+        else:
+            self.license_status.setText("Trial mode (no license file)")
+
+    def _import_license(self) -> None:
+        if prompt_import_license(self):
+            self._refresh_license_status()
 
     def _save(self) -> None:
         self.settings.compute_type = self.compute_type.currentText()

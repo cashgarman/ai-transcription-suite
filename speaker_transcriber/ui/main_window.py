@@ -61,6 +61,7 @@ from speaker_transcriber.audio.ffmpeg import (
     SUPPORTED_EXTENSIONS,
     is_supported_media,
     media_file_dialog_filter,
+    probe_media,
 )
 from speaker_transcriber.audio.sources import MediaSource
 from speaker_transcriber.cache import SpeakerNameStore, TranscriptCache
@@ -70,12 +71,22 @@ from speaker_transcriber.config import (
     DEFAULT_DIARIZATION_MODEL,
     OLLAMA_CTX_CHOICES,
     PDF_ENGINES,
-    PDF_THEMES,
     RECOMMENDED_WHISPER_MODELS,
     SPEAKER_MODES,
     format_ctx_label,
     snap_ollama_num_ctx,
 )
+from speaker_transcriber.entitlements import (
+    TRIAL_MAX_DURATION_SECONDS,
+    dev_tools_enabled,
+    dev_mode_label,
+    entitlements_mode_display,
+    is_licensed,
+    partial_transcript_message,
+    toggle_dev_mode_override,
+    trial_hint_text,
+)
+from speaker_transcriber.errors import TrialLimitError, TrialLimitReason
 from speaker_transcriber.export import EXPORTERS, export_result
 from speaker_transcriber.export.common import (
     format_speaking_duration,
@@ -86,6 +97,7 @@ from speaker_transcriber.export.meeting_document import is_usable_summary_markdo
 from speaker_transcriber.export.text_exporter import render_summary_source
 from speaker_transcriber.export.pdf_exporter import reportlab_available
 from speaker_transcriber.export.pdf_options import (
+    PdfExportChoices,
     effective_pdf_options,
     pdf_option_deviations,
 )
@@ -127,6 +139,11 @@ from speaker_transcriber.ui.hazard_progress import HazardProgressBar
 from speaker_transcriber.ui.input_timeline import InputTimelineWidget
 from speaker_transcriber.ui.model_combo import ComboModelItem, ModelComboBox
 from speaker_transcriber.ui.notification import NotificationBanner
+from speaker_transcriber.ui.license_dialog import prompt_import_license
+from speaker_transcriber.ui.trial_limit_dialog import (
+    show_multi_file_upsell,
+    show_truncation_offer,
+)
 from speaker_transcriber.ui.oom_recovery_dialog import (
     OomRecoveryChoice,
     OomRecoveryRequest,
@@ -402,6 +419,11 @@ class MainWindow(QMainWindow):
         timeline_row.addLayout(file_buttons)
         setup_layout.addLayout(timeline_row)
 
+        self.trial_hint_label = QLabel(trial_hint_text())
+        self.trial_hint_label.setObjectName("trialHintLabel")
+        self.trial_hint_label.setWordWrap(True)
+        setup_layout.addWidget(self.trial_hint_label)
+
         self.whisper_combo = ModelComboBox()
         self.whisper_combo.setToolTip(
             "Whisper / faster-whisper model used to transcribe speech. "
@@ -542,27 +564,6 @@ class MainWindow(QMainWindow):
         self.pdf_engine_combo.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
         )
-        self.pdf_theme_combo = QComboBox()
-        theme_view = QListView()
-        theme_view.setMinimumWidth(220)
-        self.pdf_theme_combo.setView(theme_view)
-        self.pdf_theme_combo.addItem("Light (print friendly)", "light")
-        self.pdf_theme_combo.addItem("Dark (screen reading)", "dark")
-        theme_index = self.pdf_theme_combo.findData(self.settings.pdf_theme)
-        self.pdf_theme_combo.setCurrentIndex(max(theme_index, 0))
-        self.pdf_theme_combo.currentIndexChanged.connect(self._persist_pdf_theme)
-        self.pdf_theme_combo.setToolTip(
-            "Colour scheme for the exported PDF. Light prints well on paper; "
-            "dark matches the application for on-screen reading."
-        )
-        self.pdf_theme_combo.setMinimumWidth(120)
-        self.pdf_theme_combo.setSizeAdjustPolicy(
-            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
-        )
-        self.pdf_theme_combo.setMinimumContentsLength(8)
-        self.pdf_theme_combo.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
-        )
         self.refresh_ollama_button = QPushButton("Refresh")
         self.refresh_ollama_button.clicked.connect(self._refresh_ollama_models)
         self._ctx_choices = list(OLLAMA_CTX_CHOICES)
@@ -616,10 +617,6 @@ class MainWindow(QMainWindow):
         )
         models_row.addWidget(
             self._stacked_field("Format PDF notes", self.pdf_engine_combo, "pdf"),
-            1,
-        )
-        models_row.addWidget(
-            self._stacked_field("PDF theme", self.pdf_theme_combo),
             1,
         )
         models_row.addWidget(self._stacked_field("Notes context", ctx_controls), 0)
@@ -785,8 +782,11 @@ class MainWindow(QMainWindow):
             "gpuMeter",
         )
         self.elapsed_label = QLabel("Elapsed: 00:00")
+        self.entitlement_mode_label = QLabel()
+        self.entitlement_mode_label.setObjectName("entitlementModeLabel")
         status_layout.addWidget(progress_host, 1)
         status_layout.addWidget(self.elapsed_label)
+        status_layout.addWidget(self.entitlement_mode_label)
         status_layout.addWidget(self.cpu_meter)
         status_layout.addWidget(self.ram_meter)
         status_layout.addWidget(self.vram_meter)
@@ -916,6 +916,8 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central)
         self._bind_speaker_nav_shortcuts()
         self._bind_find_shortcut()
+        self._bind_dev_mode_shortcut()
+        self._refresh_entitlement_ui()
         self._update_cache_controls()
 
     def _stacked_field(
@@ -1147,12 +1149,6 @@ class MainWindow(QMainWindow):
         if engine not in PDF_ENGINES:
             engine = "reportlab"
         self._persist_combo_setting("pdf_engine", engine)
-
-    def _persist_pdf_theme(self, _index: int = 0) -> None:
-        theme = str(self.pdf_theme_combo.currentData() or "light")
-        if theme not in PDF_THEMES:
-            theme = "light"
-        self._persist_combo_setting("pdf_theme", theme)
 
     def _append_extra(self, attr: str, name: str) -> None:
         current = list(getattr(self.settings, attr))
@@ -1417,10 +1413,21 @@ class MainWindow(QMainWindow):
         return paths
 
     def _add_source_paths(self, paths: list[Path]) -> None:
+        if not paths:
+            return
+        if not is_licensed():
+            existing = self.input_timeline.paths()
+            if existing:
+                show_multi_file_upsell(self, self._open_license_dialog)
+                return
+            if len(paths) > 1:
+                show_multi_file_upsell(self, self._open_license_dialog)
+                paths = paths[:1]
         self.input_timeline.append_paths(paths)
         self._probe_durations(paths)
         self._remember_recent_files(paths)
         self._on_sources_changed()
+        self._refresh_start_button_tooltip()
 
     def _probe_durations(self, paths: list[Path]) -> None:
         pending = [
@@ -1439,6 +1446,7 @@ class MainWindow(QMainWindow):
 
     def _on_duration_ready(self, resolved_path: str, duration_seconds: float) -> None:
         self.input_timeline.set_duration(Path(resolved_path), duration_seconds)
+        self._refresh_start_button_tooltip()
 
     def _remove_selected_sources(self) -> None:
         selected = self.input_timeline.selected_paths()
@@ -1475,6 +1483,8 @@ class MainWindow(QMainWindow):
             return
         cached = self.transcript_cache.load(sources)
         if cached is None:
+            return
+        if not self._trial_cache_allowed(sources, cached):
             return
         self._autoload_in_progress = True
         try:
@@ -1596,16 +1606,54 @@ class MainWindow(QMainWindow):
             return
         if self.settings.use_cached_transcript:
             cached = self.transcript_cache.load(sources)
-            if cached is not None:
+            if cached is not None and self._trial_cache_allowed(sources, cached):
                 if self._displayed_source_key() != self._source_key(sources):
                     self._load_from_cache(cached, sources)
                 return
-        self._run_transcription(sources)
+        self._begin_transcription(sources)
 
     def _retranscribe(self) -> None:
         sources = self._validate_source_input()
         if sources is None:
             return
+        self._begin_transcription(sources)
+
+    def _ensure_timeline_durations(self, sources: list[Path]) -> float:
+        total = 0.0
+        for path in sources:
+            segment_duration = self.input_timeline.duration_for_path(path)
+            if segment_duration is None:
+                segment_duration = probe_media(path).duration_seconds
+                self.input_timeline.set_duration(path, segment_duration)
+            total += segment_duration
+        self._refresh_start_button_tooltip()
+        return total
+
+    def _begin_transcription(self, sources: list[Path]) -> None:
+        if not is_licensed() and len(sources) == 1:
+            try:
+                full_duration = self._ensure_timeline_durations(sources)
+            except Exception as exc:
+                LOGGER.warning("Could not read recording duration: %s", exc)
+                QMessageBox.warning(
+                    self,
+                    "Could not read recording",
+                    f"Summit could not read the duration of this file:\n{exc}",
+                )
+                return
+            if full_duration > TRIAL_MAX_DURATION_SECONDS:
+                choice = show_truncation_offer(
+                    self,
+                    full_duration,
+                    self._open_license_dialog,
+                )
+                if choice == "truncate":
+                    self._run_transcription(
+                        sources,
+                        max_input_duration_seconds=TRIAL_MAX_DURATION_SECONDS,
+                        source_duration_seconds=full_duration,
+                    )
+                return
         self._run_transcription(sources)
 
     def _load_from_cache(self, result: TranscriptResult, sources: list[Path]) -> None:
@@ -1635,8 +1683,16 @@ class MainWindow(QMainWindow):
         name = Path(result.source_name or sources[0].name).name
         return f"Loaded cached transcript — {name}"
 
-    def _run_transcription(self, sources: list[Path]) -> None:
+    def _run_transcription(
+        self,
+        sources: list[Path],
+        *,
+        max_input_duration_seconds: float | None = None,
+        source_duration_seconds: float | None = None,
+    ) -> None:
         options = self._processing_options()
+        options.max_input_duration_seconds = max_input_duration_seconds
+        options.source_duration_seconds = source_duration_seconds
         if not options.hf_token:
             QMessageBox.information(
                 self,
@@ -1664,6 +1720,7 @@ class MainWindow(QMainWindow):
         self.worker.completed.connect(self._on_completed)
         self.worker.cancelled.connect(self._on_cancelled)
         self.worker.failed.connect(self._on_failed)
+        self.worker.trial_blocked.connect(self._on_trial_blocked)
         self.worker.start()
 
     def _set_stage_status(
@@ -1736,7 +1793,17 @@ class MainWindow(QMainWindow):
         )
         self._show_result(self._source_paths())
         self._set_busy(False)
-        self.notifications.show_message("Transcription complete", kind="success")
+        if result.fallback_config.get("trial_truncated"):
+            source_duration = float(
+                result.fallback_config.get("source_duration_seconds")
+                or result.duration_seconds
+            )
+            self.notifications.show_message(
+                partial_transcript_message(result.duration_seconds, source_duration),
+                kind="info",
+            )
+        else:
+            self.notifications.show_message("Transcription complete", kind="success")
         decisions = result.fallback_config.get("decisions", [])
         if decisions:
             self.log_output.appendPlainText("\n".join(decisions))
@@ -1756,7 +1823,45 @@ class MainWindow(QMainWindow):
         self._set_stage_status("Processing failed")
         self.log_output.appendPlainText(message)
         self.log_section.set_expanded(True)
-        QMessageBox.critical(self, "Processing failed", message)
+        if "multi-file merge is included in the Personal license" in message:
+            show_multi_file_upsell(self, self._open_license_dialog)
+        elif "No speech was detected" in message:
+            QMessageBox.warning(self, "No speech detected", message)
+        else:
+            QMessageBox.critical(self, "Processing failed", message)
+        self._set_busy(False)
+
+    def _on_trial_blocked(self, error: TrialLimitError) -> None:
+        self._set_stage_status("Trial limit")
+        self.log_output.appendPlainText(str(error))
+        self.log_section.set_expanded(True)
+        if error.reason == TrialLimitReason.MULTI_FILE:
+            show_multi_file_upsell(self, self._open_license_dialog)
+            self._set_busy(False)
+            return
+        if error.reason == TrialLimitReason.DURATION_CONSENT:
+            full_duration = error.full_duration_seconds
+            if full_duration is None:
+                sources = self._validate_source_input()
+                if sources:
+                    try:
+                        full_duration = self._ensure_timeline_durations(sources)
+                    except Exception:
+                        full_duration = self.input_timeline.total_duration()
+            choice = show_truncation_offer(
+                self,
+                full_duration or TRIAL_MAX_DURATION_SECONDS,
+                self._open_license_dialog,
+            )
+            if choice == "truncate":
+                sources = self._validate_source_input()
+                if sources:
+                    self._run_transcription(
+                        sources,
+                        max_input_duration_seconds=TRIAL_MAX_DURATION_SECONDS,
+                        source_duration_seconds=full_duration,
+                    )
+                    return
         self._set_busy(False)
 
     def _set_busy(
@@ -1788,7 +1893,6 @@ class MainWindow(QMainWindow):
         self.ollama_model_combo.setEnabled(not blocked)
         self.summary_style_combo.setEnabled(not blocked)
         self.pdf_engine_combo.setEnabled(not blocked)
-        self.pdf_theme_combo.setEnabled(not blocked)
         self.ollama_ctx_slider.setEnabled(not blocked)
         if blocked:
             self.progress_bar.start()
@@ -1902,6 +2006,74 @@ class MainWindow(QMainWindow):
         shortcut = QShortcut(QKeySequence.StandardKey.Find, self)
         shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
         shortcut.activated.connect(self._focus_current_tab_search)
+
+    def _bind_dev_mode_shortcut(self) -> None:
+        if not dev_tools_enabled():
+            return
+        shortcut = QShortcut(QKeySequence(Qt.Key.Key_F12), self)
+        shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
+        shortcut.activated.connect(self._toggle_dev_entitlement_mode)
+
+    def _toggle_dev_entitlement_mode(self) -> None:
+        toggle_dev_mode_override()
+        self.notifications.show_message(
+            f"Testing mode: {dev_mode_label()} (F12 to switch)",
+            kind="info",
+        )
+        self._refresh_entitlement_ui()
+
+    def _open_license_dialog(self) -> None:
+        if prompt_import_license(self):
+            self._refresh_entitlement_ui()
+
+    def _refresh_entitlement_ui(self) -> None:
+        licensed = is_licensed()
+        self.trial_hint_label.setVisible(not licensed)
+        self.entitlement_mode_label.setText(entitlements_mode_display())
+        from speaker_transcriber.entitlements import dev_mode_override
+
+        test_mode = dev_mode_override() is not None
+        self.entitlement_mode_label.setProperty("testMode", "true" if test_mode else "false")
+        self.entitlement_mode_label.style().unpolish(self.entitlement_mode_label)
+        self.entitlement_mode_label.style().polish(self.entitlement_mode_label)
+        self._refresh_start_button_tooltip()
+
+    def _refresh_start_button_tooltip(self) -> None:
+        if is_licensed():
+            self.start_button.setToolTip("")
+            return
+        if self.input_timeline.has_unknown_durations():
+            self.start_button.setToolTip("Reading recording duration…")
+            return
+        duration = self.input_timeline.known_total_duration()
+        if duration is not None and duration > TRIAL_MAX_DURATION_SECONDS:
+            self.start_button.setToolTip(
+                "Trial will offer to transcribe the first 10 minutes."
+            )
+        else:
+            self.start_button.setToolTip("")
+
+    def _trial_cache_allowed(
+        self,
+        sources: list[Path],
+        cached: TranscriptResult,
+    ) -> bool:
+        if is_licensed():
+            return True
+        if len(sources) > 1:
+            return False
+        full_duration = self.input_timeline.known_total_duration()
+        if full_duration is None:
+            try:
+                full_duration = self._ensure_timeline_durations(sources)
+            except Exception:
+                return False
+        if full_duration <= TRIAL_MAX_DURATION_SECONDS:
+            return True
+        return (
+            cached.duration_seconds <= TRIAL_MAX_DURATION_SECONDS
+            or bool(cached.fallback_config.get("trial_truncated"))
+        )
 
     def _focus_current_tab_search(self) -> None:
         """Ctrl+F belongs to the panel the user is in, docked or in its own window."""
@@ -2362,19 +2534,23 @@ class MainWindow(QMainWindow):
                 )
         return excluded
 
-    def _ask_pdf_options(self, style_id: str) -> dict[str, bool] | None:
-        """Show the PDF export options dialog; persist and return the choices.
+    def _ask_pdf_export_choices(self, style_id: str) -> PdfExportChoices | None:
+        """Show the PDF export dialog; persist and return the theme and options.
 
-        Returns None when the user cancelled. Styles with no applicable
-        options skip the dialog entirely.
+        Returns None when the user cancelled.
         """
-        current = effective_pdf_options(self.settings.pdf_options)
-        chosen = PdfOptionsDialog.ask(style_id, current, self)
+        chosen = PdfOptionsDialog.ask(
+            style_id,
+            self.settings.pdf_theme,
+            effective_pdf_options(self.settings.pdf_options),
+            self,
+        )
         if chosen is None:
             return None
-        deviations = pdf_option_deviations(chosen)
-        if deviations != self.settings.pdf_options:
+        deviations = pdf_option_deviations(chosen.options)
+        if deviations != self.settings.pdf_options or chosen.theme != self.settings.pdf_theme:
             self.settings.pdf_options = deviations
+            self.settings.pdf_theme = chosen.theme
             try:
                 self.settings_store.save(self.settings)
             except Exception as exc:
@@ -2514,8 +2690,8 @@ class MainWindow(QMainWindow):
             )
             return
         style_id = self._current_summary_style()
-        pdf_options = self._ask_pdf_options(style_id)
-        if pdf_options is None:
+        choices = self._ask_pdf_export_choices(style_id)
+        if choices is None:
             return
         source = self._export_source_path()
         initial_dir = self.settings.output_directory or str(
@@ -2553,11 +2729,11 @@ class MainWindow(QMainWindow):
             str(model_name or ""),
             self._current_ollama_num_ctx(),
             str(self.pdf_engine_combo.currentData() or self.settings.pdf_engine),
-            str(self.pdf_theme_combo.currentData() or self.settings.pdf_theme),
+            choices.theme,
             style_id,
             self,
             excluded_sections=self._excluded_summary_sections(style_id),
-            pdf_options=pdf_options,
+            pdf_options=choices.options,
         )
         self.pdf_export_worker.progress.connect(self._on_summary_progress)
         self.pdf_export_worker.chunk.connect(self._on_pdf_chunk)
@@ -2624,6 +2800,7 @@ class MainWindow(QMainWindow):
     def _open_settings(self) -> None:
         try:
             SettingsDialog(self.settings, self.settings_store, self).exec()
+            self._refresh_entitlement_ui()
         except Exception as exc:
             QMessageBox.critical(self, "Settings error", str(exc))
 
@@ -2857,6 +3034,7 @@ class MainWindow(QMainWindow):
             if answer != QMessageBox.StandardButton.Yes:
                 event.ignore()
                 return
+            self.pdf_export_worker.request_cancel()
             self.pdf_export_worker.wait(5000)
         self.tabs.dock_all()
         self.settings.window_width = self.width()

@@ -21,6 +21,7 @@ dependencies = [
     "ollama>=0.4",
     "reportlab>=4.2",
     "weasyprint>=62",
+    "cryptography>=43",
 ]
 
 [project.optional-dependencies]

@@ -110,3 +110,5 @@ class ProcessingOptions:
     max_block_duration_seconds: float = 30.0
     inherit_speaker_threshold_seconds: float = 0.3
     hf_token: str | None = field(default=None, repr=False)
+    max_input_duration_seconds: float | None = None
+    source_duration_seconds: float | None = None

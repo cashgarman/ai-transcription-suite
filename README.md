@@ -15,6 +15,23 @@ The inference pipeline loads one model at a time:
 6. The Whisper, alignment, and diarization models are deleted between stages
    and the CUDA cache is cleared.
 
+## Documentation
+
+This README is the user-facing guide. Developer documentation lives in
+[`docs/`](docs/README.md):
+
+| Document | Covers |
+|---|---|
+| [Architecture](docs/architecture.md) | Layers, data model, stage flow, threading, design decisions |
+| [Transcription pipeline](docs/pipeline.md) | Audio handling, the three inference stages, speaker assignment, merging, CLI |
+| [Meeting notes and prompts](docs/notes-and-prompts.md) | The Ollama notes pipeline, prompt system, the twelve styles, sections |
+| [Export subsystem](docs/export.md) | The six transcript formats and the PDF renderers |
+| [Desktop UI](docs/desktop-ui.md) | Startup, window layout, widgets, dialogs, the worker bridge |
+| [Design system](docs/design-system.md) | Every colour, font, and spacing value across app, PDF, and website |
+| [Configuration](docs/configuration.md) | Settings schema, caches, logging, secrets, network activity |
+| [Marketing website](docs/website.md) | The Next.js site in `website/` |
+| [Development guide](docs/development.md) | Setup, tests, packaging, conventions, known rough edges |
+
 ## Diarization and identification
 
 Speaker **diarization** answers “who spoke when?” by grouping similar voices as

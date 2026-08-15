@@ -15,6 +15,22 @@ from speaker_transcriber.pipeline.types import (
 )
 
 
+@pytest.fixture(autouse=True)
+def bypass_trial_limits(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "speaker_transcriber.pipeline.processor.probe_media_sources",
+        lambda paths: MediaInfo(max(len(paths), 1) * 1.0, True),
+    )
+    monkeypatch.setattr(
+        "speaker_transcriber.pipeline.processor.validate_trial_file_count",
+        lambda paths: None,
+    )
+    monkeypatch.setattr(
+        "speaker_transcriber.pipeline.processor.validate_trial_duration_consent",
+        lambda full, cap: None,
+    )
+
+
 class FakeTranscriber:
     def transcribe(self, audio_path, options, cancel, on_progress):
         on_progress(1.0)
@@ -54,7 +70,7 @@ class FakeDiarizer:
 
 
 @contextmanager
-def fake_audio(source, cancel, on_progress):
+def fake_audio(source, cancel, on_progress, *, max_duration_seconds=None):
     on_progress(1.0)
     yield Path("audio.wav"), MediaInfo(1.0, True)
 
