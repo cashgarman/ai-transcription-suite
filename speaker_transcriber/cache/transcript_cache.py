@@ -148,7 +148,11 @@ class TranscriptCache:
         path = self.path_for(cache_source)
         stored_names = self._load_speaker_names(cache_source)
         result.speakers = apply_cached_speaker_names(result.speakers, stored_names)
-        payload = json.dumps(to_json_dict(result), indent=2, ensure_ascii=False) + "\n"
+        payload = json.dumps(
+            to_json_dict(result, include_pipeline_cache=True),
+            indent=2,
+            ensure_ascii=False,
+        ) + "\n"
         directory = path.parent
         with tempfile.NamedTemporaryFile(
             mode="w",

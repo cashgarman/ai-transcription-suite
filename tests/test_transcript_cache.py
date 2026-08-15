@@ -3,7 +3,13 @@ from pathlib import Path
 
 from speaker_transcriber.cache.transcript_cache import TranscriptCache
 from speaker_transcriber.export.json_exporter import from_json_dict, to_json_dict
-from speaker_transcriber.pipeline.types import TranscriptResult, TranscriptSegment, Word
+from speaker_transcriber.pipeline.types import (
+    DiarizationSegment,
+    RawSegment,
+    TranscriptResult,
+    TranscriptSegment,
+    Word,
+)
 
 
 def sample_result(source_file: str = "meeting.mp4") -> TranscriptResult:
@@ -42,6 +48,21 @@ def test_json_round_trip_preserves_transcript_fields() -> None:
     assert restored.segments[0].words[0].word == "Welcome"
 
 
+def test_json_round_trip_preserves_pipeline_cache() -> None:
+    original = sample_result()
+    original.raw_segments = [
+        RawSegment(2.0, 6.5, "Welcome.", words=[{"word": "Welcome", "start": 2.1, "end": 2.6}])
+    ]
+    original.diarization = [DiarizationSegment(2.0, 6.5, "SPEAKER_00")]
+    restored = from_json_dict(to_json_dict(original, include_pipeline_cache=True))
+    assert restored.raw_segments[0].text == "Welcome."
+    assert restored.raw_segments[0].words[0]["start"] == 2.1
+    assert restored.diarization[0].speaker == "SPEAKER_00"
+    exported = to_json_dict(original)
+    assert "raw_segments" not in exported
+    assert "diarization" not in exported
+
+
 def test_transcript_cache_uses_video_stem(tmp_path: Path) -> None:
     cache = TranscriptCache(directory=tmp_path)
     source = tmp_path / "videos" / "meeting.mp4"
@@ -60,6 +81,22 @@ def test_transcript_cache_uses_video_stem(tmp_path: Path) -> None:
     assert loaded is not None
     assert loaded.source_file == str(source.resolve())
     assert loaded.speakers["SPEAKER_00"] == "Alice"
+
+
+def test_transcript_cache_round_trips_pipeline_stages(tmp_path: Path) -> None:
+    cache = TranscriptCache(directory=tmp_path)
+    source = tmp_path / "meeting.mp4"
+    source.touch()
+    result = sample_result(str(source.resolve()))
+    result.raw_segments = [
+        RawSegment(2.0, 6.5, "Welcome.", words=[{"word": "Welcome", "start": 2.2, "end": 2.5}])
+    ]
+    result.diarization = [DiarizationSegment(2.0, 6.5, "SPEAKER_00")]
+    cache.save(result)
+    loaded = cache.load(source)
+    assert loaded is not None
+    assert loaded.raw_segments[0].words[0]["start"] == 2.2
+    assert loaded.diarization[0].end == 6.5
 
 
 def test_transcript_cache_returns_none_for_missing_file(tmp_path: Path) -> None:

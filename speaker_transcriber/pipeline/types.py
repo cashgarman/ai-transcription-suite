@@ -52,6 +52,8 @@ class TranscriptResult:
     diarization_available: bool = False
     fallback_config: dict[str, Any] = field(default_factory=dict)
     source_files: list[str] = field(default_factory=list)
+    raw_segments: list[RawSegment] = field(default_factory=list)
+    diarization: list[DiarizationSegment] = field(default_factory=list)
 
     @property
     def source_name(self) -> str:
@@ -112,3 +114,9 @@ class ProcessingOptions:
     hf_token: str | None = field(default=None, repr=False)
     max_input_duration_seconds: float | None = None
     source_duration_seconds: float | None = None
+    skip_transcription: bool = False
+    skip_alignment: bool = False
+    skip_diarization: bool = False
+    reuse_raw_segments: list[RawSegment] = field(default_factory=list, repr=False)
+    reuse_aligned_segments: list[RawSegment] = field(default_factory=list, repr=False)
+    reuse_diarization: list[DiarizationSegment] = field(default_factory=list, repr=False)

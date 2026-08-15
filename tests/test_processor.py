@@ -32,7 +32,11 @@ def bypass_trial_limits(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 class FakeTranscriber:
+    def __init__(self) -> None:
+        self.calls = 0
+
     def transcribe(self, audio_path, options, cancel, on_progress):
+        self.calls += 1
         on_progress(1.0)
         return [
             RawSegment(
@@ -47,6 +51,7 @@ class FakeTranscriber:
 class FakeAligner:
     def __init__(self) -> None:
         self.model_name = None
+        self.calls = 0
 
     def align(
         self,
@@ -58,13 +63,27 @@ class FakeAligner:
         on_progress,
         model_name=None,
     ):
+        self.calls += 1
         self.model_name = model_name
         on_progress(1.0)
-        return segments
+        return [
+            RawSegment(
+                0.0,
+                1.0,
+                "Hello",
+                words=[{"word": "Hello", "start": 0.05, "end": 0.9}],
+            )
+        ]
 
 
 class FakeDiarizer:
+    def __init__(self) -> None:
+        self.calls = 0
+        self.options = None
+
     def diarize(self, audio_path, options, device, cancel, on_progress):
+        self.calls += 1
+        self.options = options
         on_progress(1.0)
         return [DiarizationSegment(0.0, 1.0, "SPEAKER_00")]
 
@@ -161,6 +180,92 @@ def test_processor_accepts_multiple_sources(tmp_path: Path, monkeypatch) -> None
         ProcessingOptions(hf_token="not-used"),
     )
     assert result.source_files == [str(first.resolve()), str(second.resolve())]
+
+
+def _mocked_processor(monkeypatch):
+    monkeypatch.setattr("speaker_transcriber.pipeline.processor.normalized_media", fake_audio)
+    monkeypatch.setattr(
+        "speaker_transcriber.huggingface_setup.prefetch_diarization_models",
+        lambda token, model_id=None: None,
+    )
+    manager = ModelManager()
+    monkeypatch.setattr(manager, "clear_cuda", lambda: None)
+    monkeypatch.setattr(manager, "get_vram_info", lambda: (0, 0))
+    transcriber = FakeTranscriber()
+    aligner = FakeAligner()
+    diarizer = FakeDiarizer()
+    processor = TranscriptionProcessor(manager, transcriber, aligner, diarizer)
+    return processor, transcriber, aligner, diarizer
+
+
+def test_processor_reuses_cached_transcription_and_diarization(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    source = tmp_path / "meeting.mp4"
+    source.write_bytes(b"media")
+    processor, transcriber, aligner, diarizer = _mocked_processor(monkeypatch)
+    cached_raw = [
+        RawSegment(0.0, 1.0, "Hello", words=[{"word": "Hello", "start": 0.2, "end": 0.7}])
+    ]
+    cached_turns = [DiarizationSegment(0.0, 1.0, "SPEAKER_00")]
+    result = processor.run(
+        source,
+        ProcessingOptions(
+            hf_token="not-used",
+            skip_transcription=True,
+            skip_diarization=True,
+            reuse_raw_segments=cached_raw,
+            reuse_diarization=cached_turns,
+            alignment_model="jonatasgrosman/wav2vec2-large-xlsr-53-english",
+            language="en",
+        ),
+    )
+    assert transcriber.calls == 0
+    assert aligner.calls == 1
+    assert diarizer.calls == 0
+    assert result.raw_segments[0].words[0]["start"] == 0.2
+    assert result.fallback_config["alignment_model"] == (
+        "jonatasgrosman/wav2vec2-large-xlsr-53-english"
+    )
+    assert result.diarization[0].speaker == "SPEAKER_00"
+
+
+def test_processor_reuses_cached_alignment_and_reruns_diarization(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    source = tmp_path / "meeting.mp4"
+    source.write_bytes(b"media")
+    processor, transcriber, aligner, diarizer = _mocked_processor(monkeypatch)
+    cached_raw = [RawSegment(0.0, 1.0, "Hello")]
+    cached_aligned = [
+        RawSegment(
+            0.0,
+            1.0,
+            "Hello",
+            words=[{"word": "Hello", "start": 0.05, "end": 0.9}],
+        )
+    ]
+    result = processor.run(
+        source,
+        ProcessingOptions(
+            hf_token="token",
+            skip_transcription=True,
+            skip_alignment=True,
+            reuse_raw_segments=cached_raw,
+            reuse_aligned_segments=cached_aligned,
+            language="en",
+            diarization_model="pyannote/speaker-diarization-community-1",
+        ),
+    )
+    assert transcriber.calls == 0
+    assert aligner.calls == 0
+    assert diarizer.calls == 1
+    assert result.raw_segments[0].text == "Hello"
+    assert result.fallback_config["diarization_model"] == (
+        "pyannote/speaker-diarization-community-1"
+    )
 
 
 def test_cancel_before_start(tmp_path: Path) -> None:

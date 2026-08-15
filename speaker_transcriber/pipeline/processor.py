@@ -130,7 +130,7 @@ class TranscriptionProcessor:
 
         try:
             self._check_cancel(cancel)
-            if options.hf_token:
+            if options.hf_token and not options.skip_diarization:
                 from speaker_transcriber.huggingface_setup import prefetch_diarization_models
 
                 emit(
@@ -164,105 +164,129 @@ class TranscriptionProcessor:
             ):
                 duration = media.duration_seconds
                 self._check_cancel(cancel)
-                emit("loading_whisper", 0.0, f"Loading Whisper model {options.model}")
+                if options.skip_transcription and options.reuse_raw_segments:
+                    raw_segments = list(options.reuse_raw_segments)
+                    if options.language and options.language != "auto":
+                        language = options.language
+                    emit("transcribing", 1.0, "Using cached transcription")
+                    decisions.append("Reused cached transcription.")
+                else:
+                    emit("loading_whisper", 0.0, f"Loading Whisper model {options.model}")
 
-                def transcription_operation(
-                    candidate: ProcessingOptions,
-                ) -> tuple[list[RawSegment], str]:
-                    return self.transcriber.transcribe(
-                        audio_path,
-                        candidate,
-                        cancel,
-                        lambda value: emit("transcribing", value, "Transcribing speech"),
+                    def transcription_operation(
+                        candidate: ProcessingOptions,
+                    ) -> tuple[list[RawSegment], str]:
+                        return self.transcriber.transcribe(
+                            audio_path,
+                            candidate,
+                            cancel,
+                            lambda value: emit("transcribing", value, "Transcribing speech"),
+                        )
+
+                    (raw_segments, language), chosen = self.model_manager.run_transcription_with_fallback(
+                        transcription_operation,
+                        options,
+                        decisions,
                     )
-
-                (raw_segments, language), chosen = self.model_manager.run_transcription_with_fallback(
-                    transcription_operation,
-                    options,
-                    decisions,
-                )
-                options = chosen
-                emit("transcribing", 1.0, "Transcription complete")
+                    options = chosen
+                    emit("transcribing", 1.0, "Transcription complete")
+                whisper_segments = list(raw_segments)
                 self._check_cancel(cancel)
 
                 alignment_available = False
                 aligned_segments = raw_segments
-                try:
-                    def alignment_operation(device: str) -> list[RawSegment]:
-                        align_model = options.alignment_model
-                        if str(align_model or "").strip().lower() in {"", "auto"}:
-                            align_model = None
-                        return self.aligner.align(
-                            audio_path,
-                            raw_segments,
-                            language,
-                            device,
-                            cancel,
-                            lambda value: emit(
-                                "aligning",
-                                value,
-                                "Aligning word timestamps",
-                            ),
-                            model_name=align_model,
-                        )
+                if options.skip_alignment:
+                    aligned_segments = list(
+                        options.reuse_aligned_segments or raw_segments
+                    )
+                    alignment_available = any(
+                        bool(segment.words) for segment in aligned_segments
+                    )
+                    emit("aligning", 1.0, "Using cached word alignment")
+                    decisions.append("Reused cached word alignment.")
+                else:
+                    try:
+                        def alignment_operation(device: str) -> list[RawSegment]:
+                            align_model = options.alignment_model
+                            if str(align_model or "").strip().lower() in {"", "auto"}:
+                                align_model = None
+                            return self.aligner.align(
+                                audio_path,
+                                raw_segments,
+                                language,
+                                device,
+                                cancel,
+                                lambda value: emit(
+                                    "aligning",
+                                    value,
+                                    "Aligning word timestamps",
+                                ),
+                                model_name=align_model,
+                            )
 
-                    aligned_segments, alignment_device = (
-                        self.model_manager.run_device_stage_with_fallback(
-                            alignment_operation,
-                            options.alignment_device,
-                            "alignment",
-                            decisions,
+                        aligned_segments, alignment_device = (
+                            self.model_manager.run_device_stage_with_fallback(
+                                alignment_operation,
+                                options.alignment_device,
+                                "alignment",
+                                decisions,
+                            )
                         )
-                    )
-                    options = replace(options, alignment_device=alignment_device)
-                    alignment_available = True
-                except ProcessingCancelled:
-                    raise
-                except Exception:
-                    LOGGER.exception(
-                        "Alignment failed; continuing with segment-level timestamps."
-                    )
-                    decisions.append(
-                        "Alignment failed; segment-level timestamps were preserved."
-                    )
-                emit("aligning", 1.0, "Alignment stage complete")
+                        options = replace(options, alignment_device=alignment_device)
+                        alignment_available = True
+                    except ProcessingCancelled:
+                        raise
+                    except Exception:
+                        LOGGER.exception(
+                            "Alignment failed; continuing with segment-level timestamps."
+                        )
+                        decisions.append(
+                            "Alignment failed; segment-level timestamps were preserved."
+                        )
+                    emit("aligning", 1.0, "Alignment stage complete")
                 self._check_cancel(cancel)
 
                 diarization_available = False
                 diarization = []
-                try:
-                    def diarization_operation(device: str):
-                        return self.diarizer.diarize(
-                            audio_path,
-                            options,
-                            device,
-                            cancel,
-                            lambda value: emit(
-                                "diarizing",
-                                value,
-                                "Identifying speaker turns",
-                            ),
-                        )
-
-                    diarization, diarization_device = (
-                        self.model_manager.run_device_stage_with_fallback(
-                            diarization_operation,
-                            options.diarization_device,
-                            "diarization",
-                            decisions,
-                        )
-                    )
-                    options = replace(options, diarization_device=diarization_device)
+                if options.skip_diarization:
+                    diarization = list(options.reuse_diarization)
                     diarization_available = bool(diarization)
-                except ProcessingCancelled:
-                    raise
-                except Exception as exc:
-                    LOGGER.error(
-                        "Diarization failed; preserving the plain transcript: %s",
-                        exc,
-                    )
-                    decisions.append(f"Diarization unavailable: {exc}")
-                emit("diarizing", 1.0, "Diarization stage complete")
+                    emit("diarizing", 1.0, "Using cached speaker turns")
+                    decisions.append("Reused cached speaker diarization.")
+                else:
+                    try:
+                        def diarization_operation(device: str):
+                            return self.diarizer.diarize(
+                                audio_path,
+                                options,
+                                device,
+                                cancel,
+                                lambda value: emit(
+                                    "diarizing",
+                                    value,
+                                    "Identifying speaker turns",
+                                ),
+                            )
+
+                        diarization, diarization_device = (
+                            self.model_manager.run_device_stage_with_fallback(
+                                diarization_operation,
+                                options.diarization_device,
+                                "diarization",
+                                decisions,
+                            )
+                        )
+                        options = replace(options, diarization_device=diarization_device)
+                        diarization_available = bool(diarization)
+                    except ProcessingCancelled:
+                        raise
+                    except Exception as exc:
+                        LOGGER.error(
+                            "Diarization failed; preserving the plain transcript: %s",
+                            exc,
+                        )
+                        decisions.append(f"Diarization unavailable: {exc}")
+                    emit("diarizing", 1.0, "Diarization stage complete")
                 self._check_cancel(cancel)
 
                 emit("assigning_speakers", 0.0, "Assigning words to speakers")
@@ -295,11 +319,15 @@ class TranscriptionProcessor:
                     segments=blocks,
                     alignment_available=alignment_available,
                     diarization_available=diarization_available,
+                    raw_segments=whisper_segments,
+                    diarization=diarization,
                     fallback_config={
                         "model": options.model,
                         "batch_size": options.batch_size,
                         "alignment_device": options.alignment_device,
                         "diarization_device": options.diarization_device,
+                        "alignment_model": options.alignment_model,
+                        "diarization_model": options.diarization_model,
                         "decisions": decisions,
                         "trial_truncated": bool(
                             options.max_input_duration_seconds is not None

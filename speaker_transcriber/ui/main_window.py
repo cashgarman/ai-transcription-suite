@@ -114,6 +114,12 @@ from speaker_transcriber.models.model_catalog import (
     hf_repo_cached,
 )
 from speaker_transcriber.models.summarization import RequirementsSummarizer
+from speaker_transcriber.pipeline.stage_cache import (
+    diarization_from_result,
+    aligned_segments_from_result,
+    raw_segments_from_result,
+    stage_model_changed,
+)
 from speaker_transcriber.pipeline.types import ProcessingOptions, ProgressUpdate, TranscriptResult
 from speaker_transcriber.prompts import (
     DEFAULT_STYLE as DEFAULT_SUMMARY_STYLE,
@@ -433,6 +439,9 @@ class MainWindow(QMainWindow):
             lambda: self._open_add_models("whisper")
         )
         self.whisper_combo.currentIndexChanged.connect(self._persist_whisper_model)
+        self.whisper_combo.currentIndexChanged.connect(
+            lambda _index: self._update_cache_controls()
+        )
         self.alignment_combo = ModelComboBox()
         self.alignment_combo.setToolTip(
             "wav2vec2 model used to align word timestamps. "
@@ -442,6 +451,9 @@ class MainWindow(QMainWindow):
             lambda: self._open_add_models("alignment")
         )
         self.alignment_combo.currentIndexChanged.connect(self._persist_alignment_model)
+        self.alignment_combo.currentIndexChanged.connect(
+            lambda _index: self._update_cache_controls()
+        )
         self.diarization_combo = ModelComboBox()
         self.diarization_combo.setToolTip(
             "pyannote speaker-diarization pipeline. "
@@ -451,6 +463,9 @@ class MainWindow(QMainWindow):
             lambda: self._open_add_models("diarization")
         )
         self.diarization_combo.currentIndexChanged.connect(self._persist_diarization_model)
+        self.diarization_combo.currentIndexChanged.connect(
+            lambda _index: self._update_cache_controls()
+        )
         self.language_combo = QComboBox()
         self.language_combo.setEditable(True)
         self.language_combo.addItems(
@@ -645,7 +660,24 @@ class MainWindow(QMainWindow):
         self.start_button.clicked.connect(self._start)
         self.retranscribe_button = QPushButton("Re-transcribe")
         self.retranscribe_button.setEnabled(False)
+        self.retranscribe_button.setToolTip(
+            "Run the full pipeline again, ignoring the cached transcript."
+        )
         self.retranscribe_button.clicked.connect(self._retranscribe)
+        self.realign_button = QPushButton("Re-Word Align")
+        self.realign_button.setEnabled(False)
+        self.realign_button.setToolTip(
+            "Enabled when the word-alignment model differs from the cached run. "
+            "Reuses the cached transcript and speaker turns."
+        )
+        self.realign_button.clicked.connect(self._realign)
+        self.rediarize_button = QPushButton("Re-Diarization")
+        self.rediarize_button.setEnabled(False)
+        self.rediarize_button.setToolTip(
+            "Enabled when the diarization model differs from the cached run. "
+            "Reuses the cached transcript and word timestamps."
+        )
+        self.rediarize_button.clicked.connect(self._rediarize)
         self.cancel_button = QPushButton("Cancel")
         self.cancel_button.setEnabled(False)
         self.cancel_button.clicked.connect(self._cancel)
@@ -670,6 +702,8 @@ class MainWindow(QMainWindow):
         self.cancel_summary_button.clicked.connect(self._cancel_summarization)
         action_row.addWidget(self.start_button)
         action_row.addWidget(self.retranscribe_button)
+        action_row.addWidget(self.realign_button)
+        action_row.addWidget(self.rediarize_button)
         action_row.addWidget(self.cancel_button)
         action_row.addWidget(settings_button)
         action_row.addStretch()
@@ -1500,7 +1534,38 @@ class MainWindow(QMainWindow):
             or (self.summary_worker is not None and self.summary_worker.isRunning())
             or (self.pdf_export_worker is not None and self.pdf_export_worker.isRunning())
         )
+        cached = self._cached_result_for(sources) if cache_available else None
         self.retranscribe_button.setEnabled(cache_available and not busy)
+        can_realign = (
+            cache_available
+            and not busy
+            and stage_model_changed(
+                cached,
+                "alignment_model",
+                self.alignment_combo.current_value() or self.settings.alignment_model,
+            )
+        )
+        can_rediarize = (
+            cache_available
+            and not busy
+            and stage_model_changed(
+                cached,
+                "diarization_model",
+                self.diarization_combo.current_value() or self.settings.diarization_model,
+            )
+        )
+        self.realign_button.setEnabled(can_realign)
+        self.rediarize_button.setEnabled(can_rediarize)
+
+    def _cached_result_for(self, sources: list[Path] | None) -> TranscriptResult | None:
+        if sources is None:
+            return None
+        if (
+            self.result is not None
+            and self._displayed_source_key() == self._source_key(sources)
+        ):
+            return self.result
+        return self.transcript_cache.load(sources)
 
     def _cache_status_message(self, result: TranscriptResult, sources: list[Path]) -> str:
         cached_paths = [
@@ -1618,6 +1683,82 @@ class MainWindow(QMainWindow):
             return
         self._begin_transcription(sources)
 
+    def _trial_limits_from_cached(
+        self,
+        cached: TranscriptResult,
+    ) -> tuple[float | None, float | None]:
+        config = cached.fallback_config or {}
+        if not config.get("trial_truncated"):
+            return None, None
+        source_duration = config.get("source_duration_seconds")
+        try:
+            source_seconds = float(source_duration) if source_duration is not None else None
+        except (TypeError, ValueError):
+            source_seconds = None
+        return TRIAL_MAX_DURATION_SECONDS, source_seconds
+
+    def _realign(self) -> None:
+        sources = self._validate_source_input()
+        if sources is None:
+            return
+        cached = self._cached_result_for(sources)
+        if cached is None:
+            return
+        options = self._processing_options()
+        options.skip_transcription = True
+        options.reuse_raw_segments = raw_segments_from_result(cached)
+        cached_whisper = str((cached.fallback_config or {}).get("model") or "").strip()
+        if cached_whisper:
+            options.model = cached_whisper
+        reused_turns = diarization_from_result(cached)
+        if reused_turns:
+            options.skip_diarization = True
+            options.reuse_diarization = reused_turns
+            cached_diarization = str(
+                (cached.fallback_config or {}).get("diarization_model") or ""
+            ).strip()
+            if cached_diarization:
+                options.diarization_model = cached_diarization
+        if cached.language and cached.language != "unknown":
+            options.language = cached.language
+        max_duration, source_duration = self._trial_limits_from_cached(cached)
+        self._run_transcription(
+            sources,
+            options=options,
+            max_input_duration_seconds=max_duration,
+            source_duration_seconds=source_duration,
+        )
+
+    def _rediarize(self) -> None:
+        sources = self._validate_source_input()
+        if sources is None:
+            return
+        cached = self._cached_result_for(sources)
+        if cached is None:
+            return
+        options = self._processing_options()
+        options.skip_transcription = True
+        options.skip_alignment = True
+        options.reuse_raw_segments = raw_segments_from_result(cached)
+        options.reuse_aligned_segments = aligned_segments_from_result(cached)
+        cached_whisper = str((cached.fallback_config or {}).get("model") or "").strip()
+        if cached_whisper:
+            options.model = cached_whisper
+        cached_alignment = str(
+            (cached.fallback_config or {}).get("alignment_model") or ""
+        ).strip()
+        if cached_alignment:
+            options.alignment_model = cached_alignment
+        if cached.language and cached.language != "unknown":
+            options.language = cached.language
+        max_duration, source_duration = self._trial_limits_from_cached(cached)
+        self._run_transcription(
+            sources,
+            options=options,
+            max_input_duration_seconds=max_duration,
+            source_duration_seconds=source_duration,
+        )
+
     def _ensure_timeline_durations(self, sources: list[Path]) -> float:
         total = 0.0
         for path in sources:
@@ -1689,11 +1830,15 @@ class MainWindow(QMainWindow):
         *,
         max_input_duration_seconds: float | None = None,
         source_duration_seconds: float | None = None,
+        options: ProcessingOptions | None = None,
     ) -> None:
-        options = self._processing_options()
-        options.max_input_duration_seconds = max_input_duration_seconds
-        options.source_duration_seconds = source_duration_seconds
-        if not options.hf_token:
+        if options is None:
+            options = self._processing_options()
+        if max_input_duration_seconds is not None:
+            options.max_input_duration_seconds = max_input_duration_seconds
+        if source_duration_seconds is not None:
+            options.source_duration_seconds = source_duration_seconds
+        if not options.hf_token and not options.skip_diarization:
             QMessageBox.information(
                 self,
                 "Diarization setup required",
@@ -1702,8 +1847,9 @@ class MainWindow(QMainWindow):
                 "model terms for both pyannote/speaker-diarization-3.1 and "
                 "pyannote/segmentation-3.0 on Hugging Face.",
             )
-        self.settings.model = options.model
-        self.settings.language = options.language
+        if not options.skip_transcription:
+            self.settings.model = options.model
+            self.settings.language = options.language
         self._persist_speaker_settings()
         self._clear_result_ui()
         self.progress_bar.setValue(0)

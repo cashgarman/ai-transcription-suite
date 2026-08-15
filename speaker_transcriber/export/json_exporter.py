@@ -3,10 +3,16 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from speaker_transcriber.pipeline.types import TranscriptResult, TranscriptSegment, Word
+from speaker_transcriber.pipeline.types import (
+    DiarizationSegment,
+    RawSegment,
+    TranscriptResult,
+    TranscriptSegment,
+    Word,
+)
 
 
-def to_json_dict(result: TranscriptResult) -> dict:
+def to_json_dict(result: TranscriptResult, *, include_pipeline_cache: bool = False) -> dict:
     segments = []
     for segment in result.segments:
         item = {
@@ -49,6 +55,26 @@ def to_json_dict(result: TranscriptResult) -> dict:
         payload["source_files"] = list(result.source_files)
     if result.fallback_config:
         payload["fallback_config"] = result.fallback_config
+    if include_pipeline_cache:
+        if result.raw_segments:
+            payload["raw_segments"] = [
+                {
+                    "start": segment.start,
+                    "end": segment.end,
+                    "text": segment.text,
+                    "words": [dict(word) for word in segment.words],
+                }
+                for segment in result.raw_segments
+            ]
+        if result.diarization:
+            payload["diarization"] = [
+                {
+                    "start": turn.start,
+                    "end": turn.end,
+                    "speaker": turn.speaker,
+                }
+                for turn in result.diarization
+            ]
     return payload
 
 
@@ -97,7 +123,45 @@ def from_json_dict(data: dict) -> TranscriptResult:
         diarization_available=bool(data.get("diarization_available", False)),
         fallback_config=dict(data.get("fallback_config", {})),
         source_files=[str(path) for path in data.get("source_files", [])],
+        raw_segments=_raw_segments_from_payload(data.get("raw_segments")),
+        diarization=_diarization_from_payload(data.get("diarization")),
     )
+
+
+def _raw_segments_from_payload(payload: object) -> list[RawSegment]:
+    if not isinstance(payload, list):
+        return []
+    segments: list[RawSegment] = []
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        words = item.get("words") if isinstance(item.get("words"), list) else []
+        segments.append(
+            RawSegment(
+                start=float(item.get("start", 0.0)),
+                end=float(item.get("end", 0.0)),
+                text=str(item.get("text", "")),
+                words=[dict(word) for word in words if isinstance(word, dict)],
+            )
+        )
+    return segments
+
+
+def _diarization_from_payload(payload: object) -> list[DiarizationSegment]:
+    if not isinstance(payload, list):
+        return []
+    turns: list[DiarizationSegment] = []
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        turns.append(
+            DiarizationSegment(
+                start=float(item.get("start", 0.0)),
+                end=float(item.get("end", 0.0)),
+                speaker=str(item.get("speaker", "UNKNOWN")),
+            )
+        )
+    return turns
 
 
 def render_json(result: TranscriptResult) -> str:
