@@ -41,7 +41,6 @@ from speaker_transcriber.promptlab.types import (
     Scenario,
     new_id,
 )
-from speaker_transcriber.ui.promptlab._debug_log import agent_log
 from speaker_transcriber.ui.promptlab.common import (
     LabContext,
     MarkdownView,
@@ -347,18 +346,6 @@ class TranscriptsTab(QWidget):
             key=lambda item: item.created_at,
             reverse=True,
         )
-        # #region agent log
-        agent_log(
-            "transcripts_tab.py:refresh",
-            "transcripts tab refresh",
-            {
-                "transcript_count": len(transcripts),
-                "store_root": str(self.context.store.root),
-                "ids": [item.transcript_id for item in transcripts[:5]],
-            },
-            "H3",
-        )
-        # #endregion
         self.table.setRowCount(len(transcripts))
         for row, transcript in enumerate(transcripts):
             set_row(
@@ -449,19 +436,6 @@ def _generate_job(context: LabContext, scenario: Scenario, settings: GenerationS
             cancel_event=job_context.cancel_event,
         )
         context.store.transcripts.save(transcript)
-        # #region agent log
-        agent_log(
-            "transcripts_tab.py:_generate_job",
-            "transcript saved in worker",
-            {
-                "transcript_id": transcript.transcript_id,
-                "scenario_id": transcript.scenario_id,
-                "store_root": str(context.store.root),
-                "store_count": context.store.transcripts.count(),
-            },
-            "H2",
-        )
-        # #endregion
         return transcript
 
     return run

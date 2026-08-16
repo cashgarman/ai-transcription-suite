@@ -96,7 +96,9 @@ def test_the_queue_depth_is_reported(runner):
 
 def test_a_result_is_delivered_with_its_job_id(runner):
     results: list[tuple[str, object]] = []
-    runner.job_finished.connect(lambda job_id, value: results.append((job_id, value)))
+    runner.job_finished.connect(
+        lambda job_id, kind, value: results.append((job_id, value))
+    )
 
     runner.enqueue(_job("job-1", lambda context: {"answer": 42}))
 
@@ -108,7 +110,9 @@ def test_a_failing_job_reports_and_the_queue_continues(runner):
     failures: list[tuple[str, str]] = []
     finished: list[str] = []
     runner.job_failed.connect(lambda job_id, message: failures.append((job_id, message)))
-    runner.job_finished.connect(lambda job_id, value: finished.append(job_id))
+    runner.job_finished.connect(
+        lambda job_id, kind, value: finished.append(job_id)
+    )
 
     def explode(context: JobContext):
         raise RuntimeError("nope")
@@ -202,7 +206,9 @@ def test_out_of_memory_pauses_and_retries_with_a_smaller_context(runner):
         )
     )
     finished: list[object] = []
-    runner.job_finished.connect(lambda job_id, value: finished.append(value))
+    runner.job_finished.connect(
+        lambda job_id, kind, value: finished.append(value)
+    )
 
     runner.enqueue(_job("job-1", flaky, num_ctx=8192))
 

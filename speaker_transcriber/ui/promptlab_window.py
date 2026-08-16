@@ -41,7 +41,6 @@ from speaker_transcriber.ui.promptlab.workers import (
     LabJob,
     LabJobRunner,
 )
-from speaker_transcriber.ui.promptlab._debug_log import agent_log
 from speaker_transcriber.ui.worker import OllamaModelListWorker
 
 
@@ -147,27 +146,7 @@ class PromptLabWindow(QMainWindow):
         if message:
             self.job_label.setText(message)
 
-    def _on_job_finished(self, job_id: str, result: object) -> None:
-        job = self._find_job(job_id)
-        kind = job.kind if job else ""
-        # #region agent log
-        agent_log(
-            "promptlab_window.py:_on_job_finished",
-            "job finished handler",
-            {
-                "job_id": job_id,
-                "kind": kind,
-                "job_found": job is not None,
-                "current_job_id": (
-                    self.runner.current_job.job_id if self.runner.current_job else None
-                ),
-                "pending_ids": [item.job_id for item in self.runner.pending_jobs()],
-                "store_transcript_count": self.context.store.transcripts.count(),
-                "result_type": type(result).__name__,
-            },
-            "H1",
-        )
-        # #endregion
+    def _on_job_finished(self, job_id: str, kind: str, result: object) -> None:
         if kind == KIND_GENERATE:
             self.context.transcripts_changed.emit()
         elif kind == KIND_SUMMARIZE:

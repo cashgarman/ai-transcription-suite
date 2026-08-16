@@ -23,7 +23,6 @@ from typing import Any
 from PySide6.QtCore import QThread, Signal
 
 from speaker_transcriber.errors import ProcessingCancelled
-from speaker_transcriber.ui.promptlab._debug_log import agent_log
 from speaker_transcriber.ui.oom_recovery_dialog import (
     OomRecoveryChoice,
     OomRecoveryRequest,
@@ -84,7 +83,7 @@ class LabJobRunner(QThread):
     job_started = Signal(object)
     job_progress = Signal(str, float, str)
     job_chunk = Signal(str, str)
-    job_finished = Signal(str, object)
+    job_finished = Signal(str, str, object)  # job_id, kind, result
     job_failed = Signal(str, str)
     job_cancelled = Signal(str)
     queue_changed = Signal(int)
@@ -186,20 +185,7 @@ class LabJobRunner(QThread):
                     self.job_cancelled.emit(job.job_id)
                     return
                 result = job.run(context)
-                # #region agent log
-                agent_log(
-                    "workers.py:_execute",
-                    "about to emit job_finished",
-                    {
-                        "job_id": job.job_id,
-                        "kind": job.kind,
-                        "current_job_set": self.current_job is job,
-                        "pending_has_job": job in self._pending,
-                    },
-                    "H1",
-                )
-                # #endregion
-                self.job_finished.emit(job.job_id, result)
+                self.job_finished.emit(job.job_id, job.kind, result)
                 return
             except ProcessingCancelled:
                 self.job_cancelled.emit(job.job_id)
