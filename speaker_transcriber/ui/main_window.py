@@ -173,6 +173,9 @@ from speaker_transcriber.ui.worker import (
 )
 
 
+LOGGER = logging.getLogger("speaker_transcriber.ui.main_window")
+
+
 def reveal_in_file_manager(path: Path) -> None:
     """Open the system file manager with the file selected."""
     if sys.platform == "win32":
@@ -306,11 +309,38 @@ class MainWindow(QMainWindow):
         reload_prompts_action.triggered.connect(self._reload_system_prompts)
         file_menu.addAction(reload_prompts_action)
 
+        prompt_lab_action = QAction("Prompt Lab…", self)
+        prompt_lab_action.triggered.connect(self._open_prompt_lab)
+        file_menu.addAction(prompt_lab_action)
+
         file_menu.addSeparator()
         quit_action = QAction("&Quit", self)
         quit_action.setShortcut(QKeySequence.StandardKey.Quit)
         quit_action.triggered.connect(self.close)
         file_menu.addAction(quit_action)
+
+    def _open_prompt_lab(self) -> None:
+        """Open the prompt evaluation lab in its own window."""
+        existing = getattr(self, "prompt_lab_window", None)
+        if existing is not None and existing.isVisible():
+            existing.raise_()
+            existing.activateWindow()
+            return
+        try:
+            from speaker_transcriber.promptlab.lab_prompts import load_lab_prompts
+            from speaker_transcriber.ui.promptlab_window import PromptLabWindow
+
+            load_lab_prompts()
+            self.prompt_lab_window = PromptLabWindow(self.settings_store)
+        except Exception as exc:
+            LOGGER.exception("Could not open the Prompt Lab")
+            QMessageBox.warning(
+                self,
+                "Prompt Lab",
+                f"Could not open the Prompt Lab:\n{exc}",
+            )
+            return
+        self.prompt_lab_window.show()
 
     def _reload_system_prompts(self) -> None:
         from speaker_transcriber.prompts import prompts_dir, reload_prompts

@@ -37,6 +37,7 @@ pdf-html = [
 [project.scripts]
 speaker-transcriber = "speaker_transcriber.__main__:main"
 speaker-transcriber-gui = "speaker_transcriber.app:main"
+speaker-transcriber-promptlab = "speaker_transcriber.promptlab.__main__:main"
 
 [tool.setuptools.packages.find]
 include = ["speaker_transcriber*"]
@@ -45,6 +46,7 @@ include = ["speaker_transcriber*"]
 speaker_transcriber = [
     "prompts/*.txt",
     "prompts/styles/*/*.txt",
+    "promptlab/prompts/*.txt",
     "assets/*.ico",
     "assets/fonts/*",
 ]

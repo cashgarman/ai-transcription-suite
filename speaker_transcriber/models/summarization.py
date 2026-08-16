@@ -4,7 +4,7 @@ import logging
 import re
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
 from speaker_transcriber.errors import ProcessingCancelled
@@ -149,6 +149,8 @@ class RequirementsSummarizer:
     style: SummaryStyle = get_style(DEFAULT_STYLE)
     excluded_sections: tuple[str, ...] = ()
     omit_speaker_names: bool = False
+    prompt_overrides: Mapping[str, str] = {}
+    """Stage text that replaces the shipped prompt file, keyed by stage name."""
 
     def __init__(
         self,
@@ -159,6 +161,7 @@ class RequirementsSummarizer:
         excluded_sections: tuple[str, ...] = (),
         omit_speaker_names: bool = False,
         cancel_event: threading.Event | None = None,
+        prompt_overrides: Mapping[str, str] | None = None,
     ) -> None:
         """num_ctx is required: it is the Notes context length the user selected."""
         import ollama
@@ -171,6 +174,11 @@ class RequirementsSummarizer:
         self.excluded_sections = normalize_excluded_sections(style, excluded_sections)
         self.omit_speaker_names = bool(omit_speaker_names)
         self.cancel_event = cancel_event
+        self.prompt_overrides = {
+            str(name): str(text)
+            for name, text in (prompt_overrides or {}).items()
+            if str(text).strip()
+        }
         self.client = ollama.Client()
 
     @property
@@ -225,7 +233,7 @@ class RequirementsSummarizer:
         )
 
     def _prompt(self, name: str) -> str:
-        text = get_prompt(name, self.style_id)
+        text = self.prompt_overrides.get(name) or get_prompt(name, self.style_id)
         directives: list[str] = []
         if name in self.SECTION_AWARE_STAGES:
             exclusion = self._exclusion_directive()

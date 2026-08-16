@@ -17,6 +17,7 @@ hiddenimports = (
         "speaker_transcriber",
         "speaker_transcriber.app",
         "speaker_transcriber.ui.main_window",
+        "speaker_transcriber.ui.promptlab_window",
         "speaker_transcriber.pipeline.processor",
         "keyring.backends.Windows",
         "reportlab",
@@ -31,6 +32,10 @@ datas = (
         (
             str(project_root / "speaker_transcriber" / "prompts"),
             "speaker_transcriber/prompts",
+        ),
+        (
+            str(project_root / "speaker_transcriber" / "promptlab" / "prompts"),
+            "speaker_transcriber/promptlab/prompts",
         ),
         (
             str(project_root / "speaker_transcriber" / "assets"),
