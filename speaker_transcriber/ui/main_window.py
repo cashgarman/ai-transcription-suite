@@ -159,7 +159,10 @@ from speaker_transcriber.ui.oom_recovery_dialog import (
 )
 from speaker_transcriber.ui.pdf_options_dialog import PdfOptionsDialog
 from speaker_transcriber.ui.settings_dialog import SettingsDialog
-from speaker_transcriber.ui.summary_sections_dialog import SummarySectionsDialog
+from speaker_transcriber.ui.summary_sections_dialog import (
+    SummarySectionsChoices,
+    SummarySectionsDialog,
+)
 from speaker_transcriber.ui.text_search import SearchableTextPanel
 from speaker_transcriber.ui.transcript_panel import TranscriptPanel
 from speaker_transcriber.ui.worker import (
@@ -2655,30 +2658,47 @@ class MainWindow(QMainWindow):
         stored = self.settings.summary_excluded_sections.get(style_id, [])
         return normalize_excluded_sections(style_id, stored)
 
-    def _ask_summary_sections(self, style_id: str) -> tuple[str, ...] | None:
-        """Show the section picker; persist and return the excluded ids.
+    def _omit_speaker_names_for_style(self, style_id: str) -> bool:
+        return bool(self.settings.summary_omit_speaker_names.get(style_id))
 
-        Returns None when the user cancelled. Styles with no optional
-        sections skip the dialog entirely.
+    def _ask_summary_sections(self, style_id: str) -> SummarySectionsChoices | None:
+        """Show the section picker; persist and return the user's choices.
+
+        Returns None when the user cancelled.
         """
         current = self._excluded_summary_sections(style_id)
-        excluded = SummarySectionsDialog.ask(style_id, current, self)
-        if excluded is None:
+        omit_names = self._omit_speaker_names_for_style(style_id)
+        choices = SummarySectionsDialog.ask(
+            style_id,
+            current,
+            omit_speaker_names=omit_names,
+            parent=self,
+        )
+        if choices is None:
             return None
-        if excluded != current:
-            updated = dict(self.settings.summary_excluded_sections)
-            if excluded:
-                updated[style_id] = list(excluded)
+        if (
+            choices.excluded_section_ids != current
+            or choices.omit_speaker_names != omit_names
+        ):
+            updated_sections = dict(self.settings.summary_excluded_sections)
+            if choices.excluded_section_ids:
+                updated_sections[style_id] = list(choices.excluded_section_ids)
             else:
-                updated.pop(style_id, None)
-            self.settings.summary_excluded_sections = updated
+                updated_sections.pop(style_id, None)
+            self.settings.summary_excluded_sections = updated_sections
+            updated_omit = dict(self.settings.summary_omit_speaker_names)
+            if choices.omit_speaker_names:
+                updated_omit[style_id] = True
+            else:
+                updated_omit.pop(style_id, None)
+            self.settings.summary_omit_speaker_names = updated_omit
             try:
                 self.settings_store.save(self.settings)
             except Exception as exc:
                 self.log_output.appendPlainText(
                     f"Failed to save summary section choices: {exc}"
                 )
-        return excluded
+        return choices
 
     def _ask_pdf_export_choices(self, style_id: str) -> PdfExportChoices | None:
         """Show the PDF export dialog; persist and return the theme and options.
@@ -2879,6 +2899,7 @@ class MainWindow(QMainWindow):
             style_id,
             self,
             excluded_sections=self._excluded_summary_sections(style_id),
+            omit_speaker_names=self._omit_speaker_names_for_style(style_id),
             pdf_options=choices.options,
         )
         self.pdf_export_worker.progress.connect(self._on_summary_progress)
@@ -2966,8 +2987,8 @@ class MainWindow(QMainWindow):
             )
             return
         style_id = self._current_summary_style()
-        excluded_sections = self._ask_summary_sections(style_id)
-        if excluded_sections is None:
+        summary_choices = self._ask_summary_sections(style_id)
+        if summary_choices is None:
             return
         self._persist_ollama_model_selection()
         self._apply_speaker_names(save_only=True)
@@ -2985,7 +3006,8 @@ class MainWindow(QMainWindow):
             self._current_ollama_num_ctx(),
             style_id,
             self,
-            excluded_sections=excluded_sections,
+            excluded_sections=summary_choices.excluded_section_ids,
+            omit_speaker_names=summary_choices.omit_speaker_names,
         )
         self.summary_worker.progress.connect(self._on_summary_progress)
         self.summary_worker.chunk.connect(self._on_summary_chunk)

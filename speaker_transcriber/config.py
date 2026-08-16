@@ -60,6 +60,20 @@ def _clean_excluded_sections(value: object) -> dict[str, list[str]]:
     return cleaned
 
 
+def _clean_omit_speaker_names(value: object) -> dict[str, bool]:
+    """Keep only known styles where the user opted in to omit speaker names."""
+    if not isinstance(value, dict):
+        return {}
+    cleaned: dict[str, bool] = {}
+    for style_key, enabled in value.items():
+        style_id = str(style_key)
+        if not is_known_style(style_id):
+            continue
+        if bool(enabled):
+            cleaned[style_id] = True
+    return cleaned
+
+
 def _clean_pdf_options(value: object) -> dict[str, bool]:
     """Keep only registered PDF options whose value differs from the default."""
     from speaker_transcriber.export.pdf_options import pdf_option_deviations
@@ -142,6 +156,8 @@ class AppSettings:
     summary_style: str = DEFAULT_SUMMARY_STYLE
     summary_excluded_sections: dict[str, list[str]] = field(default_factory=dict)
     """Per style, the section ids the user turned off for that style."""
+    summary_omit_speaker_names: dict[str, bool] = field(default_factory=dict)
+    """Per style, whether narrative notes should omit speaker attribution."""
     recent_files: list[str] = field(default_factory=list)
 
     def validate(self) -> None:
@@ -187,6 +203,9 @@ class AppSettings:
         self.summary_style = normalize_style(self.summary_style)
         self.summary_excluded_sections = _clean_excluded_sections(
             self.summary_excluded_sections
+        )
+        self.summary_omit_speaker_names = _clean_omit_speaker_names(
+            self.summary_omit_speaker_names
         )
         self.alignment_model = str(self.alignment_model or DEFAULT_ALIGNMENT_MODEL).strip() or DEFAULT_ALIGNMENT_MODEL
         self.diarization_model = (

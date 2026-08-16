@@ -145,8 +145,10 @@ class RequirementsSummarizer:
     CHUNK_STAGE_END = 0.55
     MERGE_STAGE_END = 0.80
     SECTION_AWARE_STAGES = frozenset({"merge", "validate", "format"})
+    PROMPT_STAGES = frozenset({"system", "chunk", "merge", "validate", "format"})
     style: SummaryStyle = get_style(DEFAULT_STYLE)
     excluded_sections: tuple[str, ...] = ()
+    omit_speaker_names: bool = False
 
     def __init__(
         self,
@@ -155,6 +157,7 @@ class RequirementsSummarizer:
         num_ctx: int,
         style: str = DEFAULT_STYLE,
         excluded_sections: tuple[str, ...] = (),
+        omit_speaker_names: bool = False,
         cancel_event: threading.Event | None = None,
     ) -> None:
         """num_ctx is required: it is the Notes context length the user selected."""
@@ -166,6 +169,7 @@ class RequirementsSummarizer:
         self.num_ctx = int(num_ctx)
         self.style: SummaryStyle = get_style(style)
         self.excluded_sections = normalize_excluded_sections(style, excluded_sections)
+        self.omit_speaker_names = bool(omit_speaker_names)
         self.cancel_event = cancel_event
         self.client = ollama.Client()
 
@@ -203,12 +207,36 @@ class RequirementsSummarizer:
         sentences.append("Produce every other section exactly as instructed.")
         return "## Sections turned off by the user\n\n" + " ".join(sentences)
 
+    def _omit_speaker_names_directive(self) -> str:
+        if not self.omit_speaker_names:
+            return ""
+        return (
+            "## Omit speaker attribution\n\n"
+            "Use names only where the document needs to identify a person: "
+            "the Participants or attendees list, and action items, follow-ups, "
+            "owners, shoutouts, or any other callout that assigns work or "
+            "credit to a specific person.\n\n"
+            "Do not attribute narrative discussion points to speakers. No "
+            "\"Ada said\", no \"Speaker 1 argued\", and no `- <Speaker>: "
+            "<point>` bullets. Write topic bullets as `- <point>` with the "
+            "substance only.\n\n"
+            "This overrides any instruction above that asks for inline "
+            "speaker attribution in discussion notes or narrative sections."
+        )
+
     def _prompt(self, name: str) -> str:
         text = get_prompt(name, self.style_id)
+        directives: list[str] = []
         if name in self.SECTION_AWARE_STAGES:
-            directive = self._exclusion_directive()
-            if directive:
-                return f"{text}\n\n{directive}"
+            exclusion = self._exclusion_directive()
+            if exclusion:
+                directives.append(exclusion)
+        if name in self.PROMPT_STAGES:
+            omit = self._omit_speaker_names_directive()
+            if omit:
+                directives.append(omit)
+        if directives:
+            return f"{text}\n\n" + "\n\n".join(directives)
         return text
 
     def _strip_excluded(self, markdown: str) -> str:

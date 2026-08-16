@@ -252,6 +252,7 @@ class SummarizationWorker(QThread, NotesMemoryRecoveryMixin):
     oom_detected = Signal(object)
 
     excluded_sections: tuple[str, ...] = ()
+    omit_speaker_names: bool = False
 
     def __init__(
         self,
@@ -262,6 +263,7 @@ class SummarizationWorker(QThread, NotesMemoryRecoveryMixin):
         parent=None,
         *,
         excluded_sections: tuple[str, ...] = (),
+        omit_speaker_names: bool = False,
     ) -> None:
         super().__init__(parent)
         self.text = text
@@ -269,6 +271,7 @@ class SummarizationWorker(QThread, NotesMemoryRecoveryMixin):
         self.num_ctx = int(num_ctx)
         self.style = normalize_style(style)
         self.excluded_sections = tuple(excluded_sections)
+        self.omit_speaker_names = bool(omit_speaker_names)
         self.cancel_event = threading.Event()
         self._init_recovery()
 
@@ -301,6 +304,7 @@ class SummarizationWorker(QThread, NotesMemoryRecoveryMixin):
                     num_ctx=self.num_ctx,
                     style=self.style,
                     excluded_sections=self.excluded_sections,
+                    omit_speaker_names=self.omit_speaker_names,
                     cancel_event=self.cancel_event,
                 )
                 summary = summarizer.summarize(
@@ -341,6 +345,7 @@ class PdfExportWorker(QThread, NotesMemoryRecoveryMixin):
     FORMAT_END = 0.85
 
     excluded_sections: tuple[str, ...] = ()
+    omit_speaker_names: bool = False
     pdf_options: dict[str, bool] | None = None
 
     def __init__(
@@ -356,6 +361,7 @@ class PdfExportWorker(QThread, NotesMemoryRecoveryMixin):
         parent=None,
         *,
         excluded_sections: tuple[str, ...] = (),
+        omit_speaker_names: bool = False,
         pdf_options: dict[str, bool] | None = None,
     ) -> None:
         super().__init__(parent)
@@ -368,6 +374,7 @@ class PdfExportWorker(QThread, NotesMemoryRecoveryMixin):
         self.pdf_theme = pdf_theme
         self.style = normalize_style(style)
         self.excluded_sections = tuple(excluded_sections)
+        self.omit_speaker_names = bool(omit_speaker_names)
         self.pdf_options = dict(pdf_options) if pdf_options else None
         self.cancel_event = threading.Event()
         self._init_recovery()
@@ -439,6 +446,7 @@ class PdfExportWorker(QThread, NotesMemoryRecoveryMixin):
                 num_ctx=self.num_ctx,
                 style=self.style,
                 excluded_sections=self.excluded_sections,
+                omit_speaker_names=self.omit_speaker_names,
                 cancel_event=self.cancel_event,
             )
 
@@ -485,6 +493,7 @@ class PdfExportWorker(QThread, NotesMemoryRecoveryMixin):
                     num_ctx=self.num_ctx,
                     style=self.style,
                     excluded_sections=self.excluded_sections,
+                    omit_speaker_names=self.omit_speaker_names,
                     cancel_event=self.cancel_event,
                 )
             emit_progress(self.SUMMARIZE_END, "Formatting meeting notes…")

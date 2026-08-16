@@ -62,6 +62,8 @@ def make_summarizer(
     client: object,
     style: str,
     excluded: tuple[str, ...] = (),
+    *,
+    omit_speaker_names: bool = False,
     num_ctx: int = 8192,
 ) -> RequirementsSummarizer:
     summarizer = RequirementsSummarizer.__new__(RequirementsSummarizer)
@@ -69,6 +71,7 @@ def make_summarizer(
     summarizer.num_ctx = num_ctx
     summarizer.style = get_style(style)
     summarizer.excluded_sections = normalize_excluded_sections(style, excluded)
+    summarizer.omit_speaker_names = bool(omit_speaker_names)
     summarizer.cancel_event = None
     summarizer.client = client
     return summarizer
@@ -293,6 +296,35 @@ def test_stage_prompts_carry_the_directive_only_when_sections_are_excluded() -> 
         assert excluding._prompt(stage) == get_prompt(stage, "meeting_summary")
 
 
+def test_omit_speaker_names_directive_reaches_every_prompt_stage() -> None:
+    load_prompts()
+    plain = make_summarizer(RecordingClient(), "meeting_summary")
+    omitting = make_summarizer(
+        RecordingClient(), "meeting_summary", omit_speaker_names=True
+    )
+    for stage in ("system", "chunk", "merge", "validate", "format"):
+        base = get_prompt(stage, "meeting_summary")
+        assert plain._prompt(stage) == base
+        injected = omitting._prompt(stage)
+        assert injected.startswith(base)
+        assert "Omit speaker attribution" in injected
+        assert "`- <Speaker>: <point>`" in injected
+
+
+def test_omit_speaker_names_and_exclusions_can_combine() -> None:
+    load_prompts()
+    summarizer = make_summarizer(
+        RecordingClient(),
+        "meeting_summary",
+        ("action_items",),
+        omit_speaker_names=True,
+    )
+    merge = summarizer._prompt("merge")
+    assert "Sections turned off by the user" in merge
+    assert "Omit speaker attribution" in merge
+    assert summarizer._prompt("chunk").count("Omit speaker attribution") == 1
+
+
 def test_required_sections_shrink_with_the_exclusions() -> None:
     summarizer = make_summarizer(
         RecordingClient(), "meeting_summary", ("action_items",)
@@ -313,8 +345,10 @@ def test_constructor_normalizes_unknown_section_ids(monkeypatch) -> None:
         num_ctx=8192,
         style="meeting_summary",
         excluded_sections=("bogus", "closing_assessment"),
+        omit_speaker_names=True,
     )
     assert summarizer.excluded_sections == ("closing_assessment",)
+    assert summarizer.omit_speaker_names is True
 
 
 # ---------------------------------------------------------------------------
@@ -438,18 +472,27 @@ def test_settings_validation_drops_unknown_styles_and_ids() -> None:
             "meeting_summary": ["action_items", "bogus"],
             "not_a_style": ["action_items"],
             "pitch_deck": "not-a-list",
-        }
+        },
+        summary_omit_speaker_names={
+            "meeting_summary": True,
+            "not_a_style": True,
+            "pitch_deck": False,
+        },
     )
     settings.validate()
     assert settings.summary_excluded_sections == {
         "meeting_summary": ["action_items"]
     }
+    assert settings.summary_omit_speaker_names == {"meeting_summary": True}
 
 
 def test_settings_validation_resets_a_non_dict_value() -> None:
     settings = AppSettings(summary_excluded_sections="nope")
     settings.validate()
     assert settings.summary_excluded_sections == {}
+    settings = AppSettings(summary_omit_speaker_names="nope")
+    settings.validate()
+    assert settings.summary_omit_speaker_names == {}
 
 
 def test_settings_round_trip_through_the_store(tmp_path) -> None:
@@ -457,17 +500,20 @@ def test_settings_round_trip_through_the_store(tmp_path) -> None:
     settings = AppSettings(
         summary_excluded_sections={
             "casual_meeting": ["risks", "closing_assessment"]
-        }
+        },
+        summary_omit_speaker_names={"casual_meeting": True},
     )
     store.save(settings)
     saved = json.loads((tmp_path / "settings.json").read_text(encoding="utf-8"))
     assert saved["summary_excluded_sections"] == {
         "casual_meeting": ["risks", "closing_assessment"]
     }
+    assert saved["summary_omit_speaker_names"] == {"casual_meeting": True}
     loaded = store.load()
     assert loaded.summary_excluded_sections == {
         "casual_meeting": ["risks", "closing_assessment"]
     }
+    assert loaded.summary_omit_speaker_names == {"casual_meeting": True}
 
 
 # ---------------------------------------------------------------------------
@@ -516,6 +562,7 @@ def make_worker(tmp_path, markdown: str, style: str):
     worker.pdf_engine = "reportlab"
     worker.pdf_theme = "light"
     worker.style = style
+    worker.omit_speaker_names = False
     worker.cancel_event = threading.Event()
     for name in ("progress", "chunk", "section_break", "summary_ready", "completed"):
         setattr(worker, name, FakeSignal())

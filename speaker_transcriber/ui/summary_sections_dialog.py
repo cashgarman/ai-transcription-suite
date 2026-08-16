@@ -2,13 +2,15 @@
 
 The choices are registry-driven: every style declares its own toggleable
 sections on its ``SummaryStyle`` entry, so a new style — or a new section on an
-existing style — shows up here without any dialog changes. Styles that declare
-no sections (the sequential transcripts) never show the dialog at all.
+existing style — shows up here without any dialog changes. The dialog always
+opens so the user can also choose whether to omit speaker names from narrative
+notes.
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterable
+from dataclasses import dataclass
 
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -22,6 +24,12 @@ from PySide6.QtWidgets import (
 from speaker_transcriber.prompts import get_style, style_sections
 
 
+@dataclass(frozen=True)
+class SummarySectionsChoices:
+    excluded_section_ids: tuple[str, ...]
+    omit_speaker_names: bool
+
+
 class SummarySectionsDialog(QDialog):
     """Checkboxes for every optional section of the selected summary style."""
 
@@ -29,6 +37,8 @@ class SummarySectionsDialog(QDialog):
         self,
         style_id: str,
         excluded_ids: Iterable[str] = (),
+        *,
+        omit_speaker_names: bool = False,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -61,6 +71,22 @@ class SummarySectionsDialog(QDialog):
             layout.addWidget(description)
             self._boxes[section.section_id] = box
 
+        self.omit_speaker_names_box = QCheckBox(
+            "Keep names only for participants and assigned callouts"
+        )
+        self.omit_speaker_names_box.setChecked(omit_speaker_names)
+        layout.addWidget(self.omit_speaker_names_box)
+        omit_description = QLabel(
+            "When enabled, discussion notes avoid inline speaker attribution "
+            "(no \"Ada said\" or \"- Ada: …\" bullets). Names still appear in "
+            "the participants list and in action items, owners, shoutouts, and "
+            "other person-specific callouts."
+        )
+        omit_description.setWordWrap(True)
+        omit_description.setIndent(24)
+        omit_description.setStyleSheet("color: palette(mid);")
+        layout.addWidget(omit_description)
+
         layout.addStretch()
 
         buttons = QDialogButtonBox()
@@ -80,6 +106,7 @@ class SummarySectionsDialog(QDialog):
     def _restore_defaults(self) -> None:
         for section in self._style.sections:
             self._boxes[section.section_id].setChecked(section.default_included)
+        self.omit_speaker_names_box.setChecked(False)
 
     def excluded_section_ids(self) -> tuple[str, ...]:
         """The ids the user unchecked, in registry order."""
@@ -89,20 +116,28 @@ class SummarySectionsDialog(QDialog):
             if not box.isChecked()
         )
 
+    def choices(self) -> SummarySectionsChoices:
+        return SummarySectionsChoices(
+            excluded_section_ids=self.excluded_section_ids(),
+            omit_speaker_names=self.omit_speaker_names_box.isChecked(),
+        )
+
     @classmethod
     def ask(
         cls,
         style_id: str,
         excluded_ids: Iterable[str] = (),
+        *,
+        omit_speaker_names: bool = False,
         parent: QWidget | None = None,
-    ) -> tuple[str, ...] | None:
-        """The excluded section ids, or None when the user cancelled.
-
-        Styles with no optional sections skip the dialog and return ().
-        """
-        if not style_sections(style_id):
-            return ()
-        dialog = cls(style_id, excluded_ids, parent)
+    ) -> SummarySectionsChoices | None:
+        """The user's section and attribution choices, or None when cancelled."""
+        dialog = cls(
+            style_id,
+            excluded_ids,
+            omit_speaker_names=omit_speaker_names,
+            parent=parent,
+        )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return None
-        return dialog.excluded_section_ids()
+        return dialog.choices()
