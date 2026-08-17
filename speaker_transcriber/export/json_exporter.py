@@ -46,6 +46,7 @@ def to_json_dict(result: TranscriptResult, *, include_pipeline_cache: bool = Fal
         "speakers": result.speakers,
         "metadata": {
             "speaker_display_names": dict(result.speakers),
+            "speaker_genders": dict(result.speaker_genders),
         },
         "segments": segments,
         "alignment_available": result.alignment_available,
@@ -113,11 +114,17 @@ def from_json_dict(data: dict) -> TranscriptResult:
         speakers.update(
             {str(key): str(value) for key, value in metadata_names.items()}
         )
+    speaker_genders = {
+        str(key): str(value)
+        for key, value in metadata.get("speaker_genders", {}).items()
+        if str(value) in ("male", "female")
+    }
     return TranscriptResult(
         source_file=str(data["source_file"]),
         language=str(data.get("language", "unknown")),
         duration_seconds=float(data.get("duration_seconds", 0.0)),
         speakers=speakers,
+        speaker_genders=speaker_genders,
         segments=segments,
         alignment_available=bool(data.get("alignment_available", False)),
         diarization_available=bool(data.get("diarization_available", False)),

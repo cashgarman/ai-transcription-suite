@@ -57,6 +57,33 @@ FIRST_NAMES = (
     "Freya", "Ravi", "Elise", "Jonah", "Amara", "Sven", "Nadia", "Caleb",
 )
 
+FIRST_NAME_GENDER: dict[str, str] = {
+    "Ada": "female",
+    "Rafael": "male",
+    "Priya": "female",
+    "Tomas": "male",
+    "Noor": "female",
+    "Wei": "male",
+    "Iris": "female",
+    "Dmitri": "male",
+    "Salma": "female",
+    "Kofi": "male",
+    "Hana": "female",
+    "Bram": "male",
+    "Lucia": "female",
+    "Owen": "male",
+    "Yuki": "female",
+    "Mateo": "male",
+    "Freya": "female",
+    "Ravi": "male",
+    "Elise": "female",
+    "Jonah": "male",
+    "Amara": "female",
+    "Sven": "male",
+    "Nadia": "female",
+    "Caleb": "male",
+}
+
 LAST_INITIALS = tuple("BCDFGHKLMNPRSTVW")
 
 SPEAKING_STYLES = (
@@ -723,11 +750,13 @@ def _participants(kind: MeetingKind, rng: random.Random, count: int) -> tuple[Pa
     people: list[Participant] = []
     for index, name in enumerate(names):
         display = f"{name} {rng.choice(LAST_INITIALS)}."
+        gender = FIRST_NAME_GENDER.get(name, "male" if index % 2 == 0 else "female")
         people.append(
             Participant(
                 speaker_id=f"SPEAKER_{index:02d}",
                 name=display,
                 role=roles[index % len(roles)],
+                gender=gender,  # type: ignore[arg-type]
                 speaking_style=rng.choice(SPEAKING_STYLES),
                 verbosity=round(rng.uniform(0.25, 1.0), 2),
             )
@@ -914,7 +943,9 @@ def scenario_content_key(scenario: Scenario) -> str:
         "kind": scenario.meeting_kind,
         "style": scenario.style_id,
         "minutes": str(scenario.duration_minutes),
-        "people": "|".join(f"{p.speaker_id}:{p.name}:{p.role}" for p in scenario.participants),
+        "people": "|".join(
+            f"{p.speaker_id}:{p.name}:{p.role}:{p.gender}" for p in scenario.participants
+        ),
         "topics": "|".join(f"{t.topic_id}:{t.title}" for t in scenario.topics),
         "facts": "|".join(f"{f.fact_id}:{f.kind}:{f.text}" for f in scenario.facts),
         "distractors": "|".join(f"{d.distractor_id}:{d.text}" for d in scenario.distractors),

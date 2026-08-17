@@ -249,3 +249,40 @@ def test_sortable_table_item_orders_sizes_numerically() -> None:
     names = SortableTableItem("qwen2.5", "qwen2.5")
     earlier = SortableTableItem("llama3.2", "llama3.2")
     assert earlier < names
+
+
+def test_add_models_dialog_hides_progress_when_download_completes(monkeypatch) -> None:
+    from pathlib import Path
+
+    from speaker_transcriber.models.model_catalog import DiskUsage
+    from speaker_transcriber.ui.add_models_dialog import AddModelsDialog
+
+    _application()
+
+    class FakeProvider:
+        title = "Test voices"
+        id = "tts"
+
+        def disk_usage(self):
+            return DiskUsage(500_000_000_000, 1_000_000_000_000, Path("C:/"))
+
+    monkeypatch.setattr(AddModelsDialog, "_run_search", lambda self: None)
+    dialog = AddModelsDialog(FakeProvider())
+    dialog.show()
+    _application().processEvents()
+    dialog._set_download_progress_active(True)
+    _application().processEvents()
+
+    assert dialog.progress.isVisible()
+    assert dialog.progress_label.isVisible()
+    assert dialog.eta_label.isVisible()
+    assert dialog.progress.is_animating()
+
+    dialog._on_download_completed()
+
+    assert not dialog.progress.isVisible()
+    assert not dialog.progress_label.isVisible()
+    assert not dialog.eta_label.isVisible()
+    assert not dialog.progress.is_animating()
+    assert dialog.status.text() == "Download complete"
+    dialog.close()

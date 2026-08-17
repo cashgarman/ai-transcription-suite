@@ -12,3 +12,5 @@ ollama>=0.4
 reportlab>=4.2
 weasyprint>=62
 cryptography>=43
+onnxruntime>=1.19
+piper-tts>=1.2

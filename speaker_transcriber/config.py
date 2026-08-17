@@ -26,6 +26,7 @@ DEFAULT_OLLAMA_NUM_CTX = 8192
 OLLAMA_OOM_POLICIES = ("", "reduce_ctx", "smaller_model")
 DEFAULT_ALIGNMENT_MODEL = "auto"
 DEFAULT_DIARIZATION_MODEL = "pyannote/speaker-diarization-3.1"
+DEFAULT_TTS_MODEL = "windows"
 
 # Placeholder until checkout is wired on the marketing site.
 DEFAULT_PURCHASE_URL = "https://summit-transcriber.com/#pricing"
@@ -143,6 +144,8 @@ class AppSettings:
     extra_whisper_models: list[str] = field(default_factory=list)
     extra_alignment_models: list[str] = field(default_factory=list)
     extra_diarization_models: list[str] = field(default_factory=list)
+    tts_model: str = DEFAULT_TTS_MODEL
+    extra_tts_models: list[str] = field(default_factory=list)
     pdf_engine: str = "reportlab"
     pdf_theme: str = "light"
     pdf_options: dict[str, bool] = field(default_factory=dict)
@@ -215,6 +218,8 @@ class AppSettings:
         self.extra_whisper_models = _string_list(self.extra_whisper_models)
         self.extra_alignment_models = _string_list(self.extra_alignment_models)
         self.extra_diarization_models = _string_list(self.extra_diarization_models)
+        self.tts_model = str(self.tts_model or DEFAULT_TTS_MODEL).strip() or DEFAULT_TTS_MODEL
+        self.extra_tts_models = _string_list(self.extra_tts_models)
 
 
 class SettingsStore:
@@ -248,6 +253,7 @@ class SettingsStore:
                 "extra_whisper_models",
                 "extra_alignment_models",
                 "extra_diarization_models",
+                "extra_tts_models",
             ):
                 if list_key in filtered:
                     filtered[list_key] = _string_list(filtered[list_key])

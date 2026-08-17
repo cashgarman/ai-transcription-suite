@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import os
 import threading
 
 from PySide6.QtCore import QThread, Signal
@@ -122,7 +121,6 @@ class ProcessingWorker(QThread):
     def run(self) -> None:
         try:
             from speaker_transcriber.cuda_setup import configure_cuda_libraries
-            from speaker_transcriber.debug_log import agent_log
             from speaker_transcriber.huggingface_setup import configure_huggingface_client
             from speaker_transcriber.huggingface_compat import patch_hf_hub_use_auth_token
             from speaker_transcriber.pytorch_compat import patch_torch_load_weights_only
@@ -133,16 +131,6 @@ class ProcessingWorker(QThread):
             patch_hf_hub_use_auth_token()
             patch_torch_load_weights_only()
             patch_speechbrain_lazy_modules()
-            agent_log(
-                "worker.py:run",
-                "worker thread started",
-                {
-                    "thread": threading.current_thread().name,
-                    "path_contains_cudnn": "nvidia\\cudnn\\bin"
-                    in os.environ.get("PATH", "").lower(),
-                },
-                "H5",
-            )
             result = TranscriptionProcessor().run(
                 self.sources,
                 self.options,

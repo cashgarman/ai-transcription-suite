@@ -37,21 +37,24 @@ def _project_interpreter() -> Path | None:
 
 
 def main() -> int:
-    if _dependencies_available():
-        from speaker_transcriber.app import main as run_app
+    try:
+        if _dependencies_available():
+            from speaker_transcriber.app import main as run_app
 
-        return run_app()
-    interpreter = _project_interpreter()
-    if interpreter is None:
-        raise SystemExit(
-            "This Python environment is missing the app's dependencies "
-            "(PySide6), and no usable .venv was found next to app.py.\n"
-            "Create one from the project directory:\n"
-            "  py -3.12 -m venv .venv\n"
-            "  .venv\\Scripts\\pip install -e ."
-        )
-    command = [str(interpreter), str(_PROJECT_DIR / "app.py"), *sys.argv[1:]]
-    return subprocess.run(command).returncode
+            return run_app()
+        interpreter = _project_interpreter()
+        if interpreter is None:
+            raise SystemExit(
+                "This Python environment is missing the app's dependencies "
+                "(PySide6), and no usable .venv was found next to app.py.\n"
+                "Create one from the project directory:\n"
+                "  py -3.12 -m venv .venv\n"
+                "  .venv\\Scripts\\pip install -e ."
+            )
+        command = [str(interpreter), str(_PROJECT_DIR / "app.py"), *sys.argv[1:]]
+        return subprocess.run(command).returncode
+    except KeyboardInterrupt:
+        return 130
 
 
 if __name__ == "__main__":

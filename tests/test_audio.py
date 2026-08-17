@@ -134,3 +134,41 @@ def test_extract_audio_passes_duration_limit_to_ffmpeg(tmp_path, monkeypatch) ->
     command = captured["command"]
     assert "-t" in command
     assert command[command.index("-t") + 1] == "600.0"
+
+
+def test_encode_wav_to_mp3_invokes_lame(tmp_path, monkeypatch) -> None:
+    source = tmp_path / "speech.wav"
+    source.write_bytes(b"RIFF")
+    destination = tmp_path / "speech.mp3"
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(ffmpeg, "_require_executable", lambda name: name)
+
+    def fake_run(command, **kwargs):
+        captured["command"] = list(command)
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    ffmpeg.encode_wav_to_mp3(source, destination, threading.Event())
+    command = captured["command"]
+    assert "-codec:a" in command
+    assert "libmp3lame" in command
+    assert str(destination) in command
+
+
+def test_stretch_wav_tempo_uses_atempo_chain(tmp_path, monkeypatch) -> None:
+    source = tmp_path / "speech.wav"
+    source.write_bytes(b"RIFF")
+    destination = tmp_path / "speech.t400.wav"
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(ffmpeg, "_require_executable", lambda name: name)
+
+    def fake_run(command, **kwargs):
+        captured["command"] = list(command)
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    ffmpeg.stretch_wav_tempo(source, destination, 4.0, threading.Event())
+    command = captured["command"]
+    assert "-filter:a" in command
+    graph = command[command.index("-filter:a") + 1]
+    assert graph == "atempo=2,atempo=2"

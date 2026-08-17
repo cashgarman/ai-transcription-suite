@@ -8,6 +8,7 @@ from PySide6.QtGui import (
     QTextBlockUserData,
     QTextCharFormat,
     QTextCursor,
+    QTextFormat,
 )
 from PySide6.QtWidgets import QTextEdit
 
@@ -35,6 +36,7 @@ class TranscriptView(QTextEdit):
         self._speaker_colors: dict[str, str] = {}
         self._highlighted_speaker: str | None = None
         self._active_entry_start: float | None = None
+        self._playback_start: float | None = None
         self._finder = TextFinder()
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
@@ -60,6 +62,7 @@ class TranscriptView(QTextEdit):
         self._result = result
         self._highlighted_speaker = None
         self._active_entry_start = None
+        self._playback_start = None
         if result is None:
             self._speaker_filter = None
         self._render()
@@ -141,6 +144,9 @@ class TranscriptView(QTextEdit):
 
         self._finder.refresh(self.document())
         self._refresh_extra_selections()
+        start = QTextCursor(self.document())
+        start.movePosition(QTextCursor.MoveOperation.Start)
+        self.setTextCursor(start)
 
     @staticmethod
     def _tag_segment_blocks(
@@ -158,17 +164,7 @@ class TranscriptView(QTextEdit):
             block = block.next()
 
     def scroll_to_time(self, seconds: float) -> None:
-        best_block = None
-        best_distance = float("inf")
-        block = self.document().firstBlock()
-        while block.isValid():
-            data = block.userData()
-            if isinstance(data, SegmentBlockData):
-                distance = abs(data.start - seconds)
-                if distance < best_distance:
-                    best_distance = distance
-                    best_block = block
-            block = block.next()
+        best_block = self._nearest_block_for_time(seconds)
         if best_block is None:
             return
         data = best_block.userData()
@@ -182,6 +178,36 @@ class TranscriptView(QTextEdit):
             self._refresh_extra_selections()
             return
         self._focus_block(best_block)
+
+    def set_playback_time(self, seconds: float | None) -> None:
+        """Highlight the spoken turn and keep it in view during TTS playback."""
+        if seconds is None:
+            if self._playback_start is None:
+                return
+            self._playback_start = None
+            self._refresh_extra_selections()
+            return
+
+        match = self._block_for_start(seconds)
+        if match is None:
+            if self._playback_start is not None:
+                self._playback_start = None
+                self._refresh_extra_selections()
+            return
+
+        self._playback_start = seconds
+        data = match.userData()
+        if (
+            self._highlighted_speaker is not None
+            and isinstance(data, SegmentBlockData)
+            and data.speaker_id == self._highlighted_speaker
+        ):
+            self._active_entry_start = seconds
+        self._refresh_extra_selections()
+        self._scroll_block_into_follow_view(match)
+
+    def clear_playback(self) -> None:
+        self.set_playback_time(None)
 
     def set_search_query(self, query: str) -> tuple[int, int]:
         self._finder.set_query(
@@ -233,40 +259,91 @@ class TranscriptView(QTextEdit):
         )
 
     def _refresh_extra_selections(self) -> None:
-        selections = self._speaker_extra_selections()
+        selections = self._segment_extra_selections()
         selections.extend(self._finder.extra_selections())
         self.setExtraSelections(selections)
 
-    def _speaker_extra_selections(self) -> list[QTextEdit.ExtraSelection]:
+    def _segment_extra_selections(self) -> list[QTextEdit.ExtraSelection]:
         speaker_id = self._highlighted_speaker
-        if speaker_id is None:
+        playback_start = self._playback_start
+        if speaker_id is None and playback_start is None:
             return []
-
-        base_format = QTextCharFormat()
-        base_format.setBackground(self._speaker_fill_color(speaker_id, active=False))
-        active_format = QTextCharFormat()
-        active_format.setBackground(self._speaker_fill_color(speaker_id, active=True))
 
         selections: list[QTextEdit.ExtraSelection] = []
         block = self.document().firstBlock()
         while block.isValid():
             data = block.userData()
-            if isinstance(data, SegmentBlockData) and data.speaker_id == speaker_id:
-                selection = QTextEdit.ExtraSelection()
-                selection.cursor = QTextCursor(block)
-                selection.cursor.movePosition(QTextCursor.MoveOperation.StartOfBlock)
-                selection.cursor.movePosition(
-                    QTextCursor.MoveOperation.EndOfBlock,
-                    QTextCursor.MoveMode.KeepAnchor,
+            if isinstance(data, SegmentBlockData):
+                is_playback = (
+                    playback_start is not None and data.start == playback_start
                 )
-                is_active = (
-                    self._active_entry_start is not None
-                    and data.start == self._active_entry_start
-                )
-                selection.format = active_format if is_active else base_format
-                selections.append(selection)
+                is_speaker = speaker_id is not None and data.speaker_id == speaker_id
+                if is_playback or is_speaker:
+                    active = is_playback or (
+                        self._active_entry_start is not None
+                        and data.start == self._active_entry_start
+                    )
+                    selections.append(
+                        self._block_selection(
+                            block,
+                            self._block_fill_format(data.speaker_id, active=active),
+                        )
+                    )
             block = block.next()
         return selections
+
+    def _block_fill_format(self, speaker_id: str, *, active: bool) -> QTextCharFormat:
+        fmt = QTextCharFormat()
+        fmt.setBackground(self._speaker_fill_color(speaker_id, active=active))
+        fmt.setProperty(QTextFormat.Property.FullWidthSelection, True)
+        return fmt
+
+    def _block_selection(
+        self, block: QTextBlock, fmt: QTextCharFormat
+    ) -> QTextEdit.ExtraSelection:
+        selection = QTextEdit.ExtraSelection()
+        selection.cursor = QTextCursor(block)
+        selection.cursor.movePosition(QTextCursor.MoveOperation.StartOfBlock)
+        selection.cursor.movePosition(
+            QTextCursor.MoveOperation.EndOfBlock,
+            QTextCursor.MoveMode.KeepAnchor,
+        )
+        selection.format = fmt
+        return selection
+
+    def _nearest_block_for_time(self, seconds: float) -> QTextBlock | None:
+        best_block: QTextBlock | None = None
+        best_distance = float("inf")
+        block = self.document().firstBlock()
+        while block.isValid():
+            data = block.userData()
+            if isinstance(data, SegmentBlockData):
+                distance = abs(data.start - seconds)
+                if distance < best_distance:
+                    best_distance = distance
+                    best_block = block
+            block = block.next()
+        return best_block
+
+    def _block_for_start(self, start: float) -> QTextBlock | None:
+        block = self.document().firstBlock()
+        while block.isValid():
+            data = block.userData()
+            if isinstance(data, SegmentBlockData) and data.start == start:
+                return block
+            block = block.next()
+        return None
+
+    def _scroll_block_into_follow_view(self, block: QTextBlock) -> None:
+        layout = self.document().documentLayout()
+        if layout is None:
+            return
+        block_rect = layout.blockBoundingRect(block)
+        viewport_height = self.viewport().height()
+        margin = max(16, min(48, viewport_height // 6)) if viewport_height > 0 else 16
+        target = int(block_rect.top()) - margin
+        bar = self.verticalScrollBar()
+        bar.setValue(max(bar.minimum(), min(target, bar.maximum())))
 
     def _reveal_search_match(self) -> None:
         match = self._finder.current_cursor()

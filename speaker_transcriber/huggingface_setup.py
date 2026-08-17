@@ -8,7 +8,6 @@ from pathlib import Path
 import httpx
 from dotenv import load_dotenv
 
-from speaker_transcriber.debug_log import agent_log
 from speaker_transcriber.huggingface_compat import patch_hf_hub_use_auth_token
 
 
@@ -219,16 +218,6 @@ def prefetch_diarization_models(
         assets: tuple[tuple[str, str], ...] = ()
     else:
         assets = DIARIZATION_MODEL_ASSETS
-    agent_log(
-        "huggingface_setup.py:prefetch_diarization_models",
-        "prefetch started",
-        {
-            "asset_count": len(assets),
-            "model_id": pipeline_id,
-            "insecure_ssl": _insecure_ssl_enabled(),
-        },
-        "H6",
-    )
     if custom_pipeline:
         last_error: Exception | None = None
         for attempt in range(1, max_attempts + 1):
@@ -247,26 +236,8 @@ def prefetch_diarization_models(
         for attempt in range(1, max_attempts + 1):
             try:
                 hf_hub_download(repo_id, filename, token=token)
-                agent_log(
-                    "huggingface_setup.py:prefetch_diarization_models",
-                    "prefetch asset cached",
-                    {"repo_id": repo_id, "filename": filename, "attempt": attempt},
-                    "H6",
-                )
                 break
             except Exception as exc:
-                agent_log(
-                    "huggingface_setup.py:prefetch_diarization_models",
-                    "prefetch asset failed",
-                    {
-                        "repo_id": repo_id,
-                        "filename": filename,
-                        "attempt": attempt,
-                        "error_type": type(exc).__name__,
-                        "error": str(exc)[:300],
-                    },
-                    "H6",
-                )
                 if attempt == max_attempts or not is_retryable_download_error(exc):
                     raise
                 delay_seconds = min(2**attempt, 30)
@@ -278,9 +249,3 @@ def prefetch_diarization_models(
                     exc,
                 )
                 time.sleep(delay_seconds)
-    agent_log(
-        "huggingface_setup.py:prefetch_diarization_models",
-        "prefetch complete",
-        {"asset_count": len(assets), "model_id": pipeline_id},
-        "H6",
-    )

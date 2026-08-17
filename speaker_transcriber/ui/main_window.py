@@ -164,6 +164,7 @@ from speaker_transcriber.ui.summary_sections_dialog import (
     SummarySectionsDialog,
 )
 from speaker_transcriber.ui.text_search import SearchableTextPanel
+from speaker_transcriber.qt_interrupt import is_interrupt_requested
 from speaker_transcriber.ui.transcript_panel import TranscriptPanel
 from speaker_transcriber.ui.worker import (
     OllamaModelListWorker,
@@ -3201,39 +3202,36 @@ class MainWindow(QMainWindow):
             )
 
     def closeEvent(self, event: QCloseEvent) -> None:
-        if self.worker and self.worker.isRunning():
-            answer = QMessageBox.question(
-                self,
+        interrupted = is_interrupt_requested()
+        wait_ms = 1500 if interrupted else 5000
+        workers = (
+            (
+                self.worker,
                 "Processing is active",
                 "Cancel processing and close the application?",
-            )
-            if answer != QMessageBox.StandardButton.Yes:
-                event.ignore()
-                return
-            self.worker.request_cancel()
-            self.worker.wait(5000)
-        if self.summary_worker and self.summary_worker.isRunning():
-            answer = QMessageBox.question(
-                self,
+            ),
+            (
+                self.summary_worker,
                 "Summarization is active",
                 "Stop summarization and close the application?",
-            )
-            if answer != QMessageBox.StandardButton.Yes:
-                event.ignore()
-                return
-            self.summary_worker.request_cancel()
-            self.summary_worker.wait(5000)
-        if self.pdf_export_worker and self.pdf_export_worker.isRunning():
-            answer = QMessageBox.question(
-                self,
+            ),
+            (
+                self.pdf_export_worker,
                 "PDF export is active",
                 "Stop PDF export and close the application?",
-            )
-            if answer != QMessageBox.StandardButton.Yes:
-                event.ignore()
-                return
-            self.pdf_export_worker.request_cancel()
-            self.pdf_export_worker.wait(5000)
+            ),
+        )
+        for worker, title, message in workers:
+            if worker is None or not worker.isRunning():
+                continue
+            if not interrupted:
+                answer = QMessageBox.question(self, title, message)
+                if answer != QMessageBox.StandardButton.Yes:
+                    event.ignore()
+                    return
+            worker.request_cancel()
+            worker.wait(wait_ms)
+        self.transcript_panel.tts.shutdown()
         self.tabs.dock_all()
         self.settings.window_width = self.width()
         self.settings.window_height = self.height()

@@ -25,7 +25,6 @@ from PySide6.QtWidgets import (
 from speaker_transcriber.promptlab.generator import (
     GenerationSettings,
     generate_transcript,
-    summary_source_for,
 )
 from speaker_transcriber.promptlab.scenarios import (
     MEETING_KINDS,
@@ -33,6 +32,7 @@ from speaker_transcriber.promptlab.scenarios import (
     build_scenario,
     suggested_style,
 )
+from speaker_transcriber.promptlab.transcript_build import result_from_payload
 from speaker_transcriber.promptlab.types import (
     DISFLUENCY_LEVELS,
     FREEFORM_MODE,
@@ -51,12 +51,16 @@ from speaker_transcriber.ui.promptlab.common import (
     hint,
     make_table,
     model_combo,
-    monospace,
     selected_ids,
     set_row,
     style_combo,
 )
 from speaker_transcriber.ui.promptlab.workers import KIND_GENERATE, JobContext, LabJob
+from speaker_transcriber.ui.transcript_tts_controller import (
+    TranscriptTtsController,
+    bind_transcript_playback_follow,
+)
+from speaker_transcriber.ui.transcript_view import TranscriptView
 
 
 MODE_LABELS = {
@@ -84,6 +88,12 @@ class TranscriptsTab(QWidget):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
 
+        self.tts = TranscriptTtsController(
+            settings_store=self.context.app_settings_store,
+            include_voice_model=False,
+        )
+        self.tts_bar = self.tts.bar
+
         layout.addWidget(self._controls(), 0)
 
         splitter = QSplitter(Qt.Orientation.Vertical)
@@ -94,9 +104,17 @@ class TranscriptsTab(QWidget):
         splitter.addWidget(self.table)
 
         self.detail = QTabWidget()
-        self.transcript_view = monospace(MarkdownView())
+        transcript_page = QWidget()
+        transcript_layout = QVBoxLayout(transcript_page)
+        transcript_layout.setContentsMargins(0, 0, 0, 0)
+        transcript_layout.setSpacing(6)
+        transcript_layout.addWidget(self.tts)
+        self.transcript_view = TranscriptView()
+        self.transcript_view.setReadOnly(True)
+        transcript_layout.addWidget(self.transcript_view, 1)
+        bind_transcript_playback_follow(self.tts, self.transcript_view)
         self.truth_view = MarkdownView()
-        self.detail.addTab(self.transcript_view, "Transcript")
+        self.detail.addTab(transcript_page, "Transcript")
         self.detail.addTab(self.truth_view, "Ground truth")
         splitter.addWidget(self.detail)
         splitter.setSizes([260, 460])
@@ -172,6 +190,11 @@ class TranscriptsTab(QWidget):
         self.temperature.setValue(settings.generator_temperature)
         model_form.addRow("Temperature", self.temperature)
         column.addWidget(model_box)
+
+        voice_box = QGroupBox("Playback voice")
+        voice_form = QFormLayout(voice_box)
+        voice_form.addRow("Voice model", self.tts_bar.model_combo)
+        column.addWidget(voice_box)
 
         column.addWidget(
             hint(
@@ -363,15 +386,29 @@ class TranscriptsTab(QWidget):
             )
         if transcripts and self.table.currentRow() < 0:
             self.table.selectRow(0)
+        elif not transcripts:
+            self._clear_detail()
+
+    def _clear_detail(self) -> None:
+        self.transcript_view.set_result(None)
+        self.truth_view.show_markdown("")
+        self.tts.set_result(None)
 
     def _show_selected(self) -> None:
         transcript_id = current_id(self.table)
         if not transcript_id:
+            self._clear_detail()
             return
         transcript = self.context.store.transcripts.get(transcript_id)
         if transcript is None:
+            self._clear_detail()
             return
-        self.transcript_view.show_plain(summary_source_for(transcript))
+        try:
+            result = result_from_payload(transcript.transcript)
+        except (KeyError, TypeError, ValueError):
+            result = None
+        self.transcript_view.set_result(result)
+        self.tts.set_result(result)
         scenario = self.context.store.scenarios.get(transcript.scenario_id)
         self.truth_view.show_markdown(
             _scenario_markdown(scenario)

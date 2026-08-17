@@ -47,6 +47,7 @@ class TranscriptResult:
     language: str
     duration_seconds: float
     speakers: dict[str, str] = field(default_factory=dict)
+    speaker_genders: dict[str, str] = field(default_factory=dict)
     segments: list[TranscriptSegment] = field(default_factory=list)
     alignment_available: bool = False
     diarization_available: bool = False
@@ -81,6 +82,7 @@ class TranscriptResult:
                     if speaker != speaker_id
                 ]
         self.speakers.pop(speaker_id, None)
+        self.speaker_genders.pop(speaker_id, None)
 
 
 @dataclass

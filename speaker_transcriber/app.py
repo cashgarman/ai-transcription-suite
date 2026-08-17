@@ -17,140 +17,162 @@ def main() -> int:
     from PySide6.QtCore import QEventLoop, QThread, Qt, Signal
     from PySide6.QtWidgets import QApplication, QMessageBox
 
+    from speaker_transcriber.qt_interrupt import (
+        INTERRUPT_EXIT_CODE,
+        exec_with_interrupt_handling,
+        install_interrupt_handling,
+        is_interrupt_requested,
+        register_active_event_loop,
+    )
     from speaker_transcriber.ui.branding import (
         apply_application_identity,
         configure_process_identity,
     )
 
-    configure_process_identity()
-    QApplication.setHighDpiScaleFactorRoundingPolicy(
-        Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
-    )
-    application = QApplication(sys.argv)
-    application.setOrganizationName("SpeakerTranscriber")
-    apply_application_identity(application)
+    try:
+        configure_process_identity()
+        QApplication.setHighDpiScaleFactorRoundingPolicy(
+            Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
+        )
+        application = QApplication(sys.argv)
+        application.setOrganizationName("SpeakerTranscriber")
+        apply_application_identity(application)
+        install_interrupt_handling(application)
 
-    from speaker_transcriber.ui.theme import apply_application_theme
+        from speaker_transcriber.ui.theme import apply_application_theme
 
-    apply_application_theme(application)
+        apply_application_theme(application)
 
-    from speaker_transcriber.ui.splash import SplashScreen
+        from speaker_transcriber.ui.splash import SplashScreen
 
-    splash = SplashScreen()
-    splash.show()
-    application.processEvents()
+        splash = SplashScreen()
+        splash.show()
+        application.processEvents()
+        if is_interrupt_requested(application):
+            splash.close()
+            return INTERRUPT_EXIT_CODE
 
-    class BootstrapWorker(QThread):
-        status = Signal(str, float)
-        completed = Signal(object)
-        failed = Signal(str)
+        class BootstrapWorker(QThread):
+            status = Signal(str, float)
+            completed = Signal(object)
+            failed = Signal(str)
 
-        def run(self) -> None:
-            try:
-                self.status.emit("Configuring runtime…", 0.15)
-                from speaker_transcriber.cuda_setup import configure_cuda_libraries
-                from speaker_transcriber.huggingface_compat import (
-                    patch_hf_hub_use_auth_token,
-                )
-                from speaker_transcriber.huggingface_setup import (
-                    configure_huggingface_client,
-                )
-                from speaker_transcriber.pytorch_compat import (
-                    patch_torch_load_weights_only,
-                )
-                from speaker_transcriber.speechbrain_compat import (
-                    patch_speechbrain_lazy_modules,
-                )
-
-                configure_cuda_libraries()
-                configure_huggingface_client()
-                patch_hf_hub_use_auth_token()
-                patch_torch_load_weights_only()
-                patch_speechbrain_lazy_modules()
-
-                self.status.emit("Preparing logging…", 0.45)
-                from speaker_transcriber.config import SettingsStore
-                from speaker_transcriber.logging_config import (
-                    configure_logging,
-                    log_system_information,
-                )
-
-                log_queue: Queue = Queue()
-                logger = configure_logging(gui_queue=log_queue)
-                log_system_information(logger)
-
-                self.status.emit("Loading system prompts…", 0.6)
-                from speaker_transcriber.prompts import load_prompts
-
-                load_prompts()
-
-                self.status.emit("Loading interface…", 0.75)
+            def run(self) -> None:
                 try:
-                    import cryptography  # noqa: F401
-                except ImportError as exc:
-                    raise RuntimeError(
-                        "Missing dependency 'cryptography'. Install it in this Python "
-                        "environment with:\n\n"
-                        "  python -m pip install \"cryptography>=43\"\n\n"
-                        "If you use the project virtual environment, run:\n"
-                        "  .\\.venv\\Scripts\\python.exe -m pip install \"cryptography>=43\""
-                    ) from exc
-                from speaker_transcriber.ui.main_window import MainWindow
-
-                self.completed.emit(
-                    BootstrapResult(
-                        settings_store=SettingsStore(),
-                        log_queue=log_queue,
-                        main_window_type=MainWindow,
+                    self.status.emit("Configuring runtime…", 0.15)
+                    from speaker_transcriber.cuda_setup import configure_cuda_libraries
+                    from speaker_transcriber.huggingface_compat import (
+                        patch_hf_hub_use_auth_token,
                     )
-                )
-            except Exception as exc:
-                self.failed.emit(str(exc))
+                    from speaker_transcriber.huggingface_setup import (
+                        configure_huggingface_client,
+                    )
+                    from speaker_transcriber.pytorch_compat import (
+                        patch_torch_load_weights_only,
+                    )
+                    from speaker_transcriber.speechbrain_compat import (
+                        patch_speechbrain_lazy_modules,
+                    )
 
-    loop = QEventLoop()
-    bootstrap = BootstrapWorker()
-    state: dict[str, Any] = {"result": None, "error": None}
+                    configure_cuda_libraries()
+                    configure_huggingface_client()
+                    patch_hf_hub_use_auth_token()
+                    patch_torch_load_weights_only()
+                    patch_speechbrain_lazy_modules()
 
-    def on_completed(result: object) -> None:
-        state["result"] = result
-        loop.quit()
+                    self.status.emit("Preparing logging…", 0.45)
+                    from speaker_transcriber.config import SettingsStore
+                    from speaker_transcriber.logging_config import (
+                        configure_logging,
+                        log_system_information,
+                    )
 
-    def on_failed(message: str) -> None:
-        state["error"] = message
-        loop.quit()
+                    log_queue: Queue = Queue()
+                    logger = configure_logging(gui_queue=log_queue)
+                    log_system_information(logger)
 
-    bootstrap.status.connect(splash.set_status)
-    bootstrap.completed.connect(on_completed)
-    bootstrap.failed.connect(on_failed)
-    bootstrap.finished.connect(loop.quit)
-    bootstrap.start()
-    loop.exec()
-    bootstrap.wait(5000)
+                    self.status.emit("Loading system prompts…", 0.6)
+                    from speaker_transcriber.prompts import load_prompts
 
-    if state["error"] is not None:
-        splash.close()
-        QMessageBox.critical(
-            None,
-            "Startup failed",
-            f"Summit could not finish starting:\n\n{state['error']}",
-        )
-        return 1
+                    load_prompts()
 
-    result = state["result"]
-    if not isinstance(result, BootstrapResult):
-        splash.close()
-        QMessageBox.critical(
-            None,
-            "Startup failed",
-            "Summit could not finish starting.",
-        )
-        return 1
+                    self.status.emit("Loading interface…", 0.75)
+                    try:
+                        import cryptography  # noqa: F401
+                    except ImportError as exc:
+                        raise RuntimeError(
+                            "Missing dependency 'cryptography'. Install it in this Python "
+                            "environment with:\n\n"
+                            "  python -m pip install \"cryptography>=43\"\n\n"
+                            "If you use the project virtual environment, run:\n"
+                            "  .\\.venv\\Scripts\\python.exe -m pip install \"cryptography>=43\""
+                        ) from exc
+                    from speaker_transcriber.ui.main_window import MainWindow
 
-    splash.set_status("Opening window…", 0.9)
-    window = result.main_window_type(result.settings_store, result.log_queue)
-    splash.set_status("Ready", 1.0)
-    splash.finish(window)
-    return application.exec()
+                    self.completed.emit(
+                        BootstrapResult(
+                            settings_store=SettingsStore(),
+                            log_queue=log_queue,
+                            main_window_type=MainWindow,
+                        )
+                    )
+                except Exception as exc:
+                    self.failed.emit(str(exc))
+
+        loop = QEventLoop()
+        register_active_event_loop(application, loop)
+        bootstrap = BootstrapWorker()
+        state: dict[str, Any] = {"result": None, "error": None}
+
+        def on_completed(result: object) -> None:
+            state["result"] = result
+            loop.quit()
+
+        def on_failed(message: str) -> None:
+            state["error"] = message
+            loop.quit()
+
+        bootstrap.status.connect(splash.set_status)
+        bootstrap.completed.connect(on_completed)
+        bootstrap.failed.connect(on_failed)
+        bootstrap.finished.connect(loop.quit)
+        bootstrap.start()
+        status = exec_with_interrupt_handling(loop.exec, application)
+        register_active_event_loop(application, None)
+        bootstrap.wait(2000 if is_interrupt_requested(application) else 5000)
+        if is_interrupt_requested(application) or status == INTERRUPT_EXIT_CODE:
+            splash.close()
+            return INTERRUPT_EXIT_CODE
+
+        if state["error"] is not None:
+            splash.close()
+            QMessageBox.critical(
+                None,
+                "Startup failed",
+                f"Summit could not finish starting:\n\n{state['error']}",
+            )
+            return 1
+
+        result = state["result"]
+        if not isinstance(result, BootstrapResult):
+            splash.close()
+            QMessageBox.critical(
+                None,
+                "Startup failed",
+                "Summit could not finish starting.",
+            )
+            return 1
+
+        splash.set_status("Opening window…", 0.9)
+        window = result.main_window_type(result.settings_store, result.log_queue)
+        splash.set_status("Ready", 1.0)
+        splash.finish(window)
+        if is_interrupt_requested(application):
+            window.close()
+            return INTERRUPT_EXIT_CODE
+        return exec_with_interrupt_handling(application.exec, application)
+    except KeyboardInterrupt:
+        return INTERRUPT_EXIT_CODE
 
 
 if __name__ == "__main__":

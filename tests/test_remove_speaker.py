@@ -40,10 +40,13 @@ def test_remove_speaker_drops_segments_and_cleanup_overlaps() -> None:
         TranscriptSegment(10.0, 15.0, "SPEAKER_00", "Again"),
     )
     result.speakers = {"SPEAKER_00": "Alice", "SPEAKER_01": "Bob"}
+    result.speaker_genders = {"SPEAKER_00": "female", "SPEAKER_01": "male"}
 
     result.remove_speaker("SPEAKER_00")
 
     assert list(result.speakers) == ["SPEAKER_01"]
+    assert list(result.speaker_genders) == ["SPEAKER_01"]
+    assert result.speaker_genders["SPEAKER_01"] == "male"
     assert len(result.segments) == 1
     assert result.segments[0].speaker == "SPEAKER_01"
     assert result.segments[0].overlapping_speakers == []

@@ -57,12 +57,20 @@ class PromptLabWindow(QMainWindow):
         store.ensure()
         lab_settings_store = LabSettingsStore(store.root)
         settings = lab_settings_store.load()
-        app_settings = (settings_store or SettingsStore()).load()
+        self._app_settings_store = settings_store or SettingsStore()
+        app_settings = self._app_settings_store.load()
         settings.with_model_fallback(app_settings.ollama_model)
         lab_settings_store.save(settings)
 
         self.runner = LabJobRunner(self)
-        self.context = LabContext(store, settings, lab_settings_store, self.runner, self)
+        self.context = LabContext(
+            store,
+            settings,
+            lab_settings_store,
+            self.runner,
+            self._app_settings_store,
+            self,
+        )
 
         self.resize(settings.window_width, settings.window_height)
         self._build()
@@ -211,6 +219,7 @@ class PromptLabWindow(QMainWindow):
     # Lifecycle
 
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        self.transcripts_tab.tts.shutdown()
         self.context.settings.window_width = self.width()
         self.context.settings.window_height = self.height()
         self.context.save_settings()

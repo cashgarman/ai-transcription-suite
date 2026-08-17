@@ -184,6 +184,11 @@ def build_transcript_result(
         for person in scenario.participants
         if person.speaker_id in used
     }
+    speaker_genders = {
+        person.speaker_id: person.gender
+        for person in scenario.participants
+        if person.speaker_id in used
+    }
     name = source_name or f"{scenario.meeting_kind}-{scenario.seed}.wav"
 
     return TranscriptResult(
@@ -191,6 +196,7 @@ def build_transcript_result(
         language="en",
         duration_seconds=round(segments[-1].end, 3) if segments else 0.0,
         speakers=speakers,
+        speaker_genders=speaker_genders,
         segments=segments,
         alignment_available=True,
         diarization_available=True,

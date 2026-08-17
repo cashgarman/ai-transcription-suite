@@ -97,6 +97,24 @@ def test_selecting_a_transcript_shows_its_ground_truth(window):
     assert "Participants" in truth
 
 
+def test_selecting_a_transcript_enables_tts_prepare(window):
+    assert not window.transcripts_tab.tts_bar.prepare_button.isEnabled()
+    _seed(window.context.store)
+    window.context.transcripts_changed.emit()
+    window.transcripts_tab.table.selectRow(0)
+
+    assert window.transcripts_tab.tts_bar.prepare_button.isEnabled()
+    assert not window.transcripts_tab.tts_bar.play_button.isEnabled()
+    assert not window.transcripts_tab.tts_bar.export_button.isEnabled()
+
+
+def test_prompt_lab_includes_voice_model_picker(window):
+    combo = window.transcripts_tab.tts_bar.model_combo
+    assert combo.count() > 0
+    assert window.transcripts_tab.tts_bar.model_caption.text() == "Voice model"
+    assert combo.parentWidget() is not None
+
+
 def test_selecting_a_run_previews_its_markdown(window):
     _seed(window.context.store)
     window.context.runs_changed.emit()

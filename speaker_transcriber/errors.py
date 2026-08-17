@@ -34,6 +34,10 @@ class MediaError(SpeakerTranscriberError):
     """Raised when media cannot be inspected or converted."""
 
 
+class TtsError(SpeakerTranscriberError):
+    """Raised when native text-to-speech fails."""
+
+
 class AuthenticationError(SpeakerTranscriberError):
     """Raised when a gated model cannot be accessed."""
 

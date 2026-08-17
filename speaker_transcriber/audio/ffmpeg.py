@@ -250,6 +250,90 @@ def concat_wav_files(
         )
 
 
+def encode_wav_to_mp3(
+    source_wav: str | Path,
+    destination_mp3: str | Path,
+    cancel_event: threading.Event,
+) -> None:
+    if cancel_event.is_set():
+        raise ProcessingCancelled()
+    source = Path(source_wav)
+    destination = Path(destination_mp3)
+    if not source.is_file():
+        raise MediaError(f"Audio file not found: {source}")
+    ffmpeg = _require_executable("ffmpeg")
+    command = [
+        ffmpeg,
+        "-hide_banner",
+        "-nostdin",
+        "-y",
+        "-i",
+        str(source),
+        "-codec:a",
+        "libmp3lame",
+        "-qscale:a",
+        "2",
+        str(destination),
+    ]
+    LOGGER.info("Encoding MP3 %s", destination.name)
+    completed = subprocess.run(command, capture_output=True, text=True, check=False)
+    if cancel_event.is_set():
+        raise ProcessingCancelled()
+    if completed.returncode != 0:
+        detail = completed.stderr.strip()
+        raise MediaError(
+            "FFmpeg could not encode the MP3 file. "
+            + (detail[-1000:] if detail else "The audio may be corrupt.")
+        )
+
+
+def stretch_wav_tempo(
+    source_wav: str | Path,
+    destination_wav: str | Path,
+    rate: float,
+    cancel_event: threading.Event,
+) -> None:
+    """Time-stretch WAV audio with FFmpeg atempo so pitch stays the same."""
+    if cancel_event.is_set():
+        raise ProcessingCancelled()
+    from speaker_transcriber.audio.tts.tempo import atempo_filter_graph, clamp_playback_rate
+
+    source = Path(source_wav)
+    destination = Path(destination_wav)
+    if not source.is_file():
+        raise MediaError(f"Audio file not found: {source}")
+    tempo = clamp_playback_rate(rate)
+    graph = atempo_filter_graph(tempo)
+    if graph is None:
+        if source.resolve() != destination.resolve():
+            destination.write_bytes(source.read_bytes())
+        return
+    ffmpeg = _require_executable("ffmpeg")
+    command = [
+        ffmpeg,
+        "-hide_banner",
+        "-nostdin",
+        "-y",
+        "-i",
+        str(source),
+        "-filter:a",
+        graph,
+        "-c:a",
+        "pcm_s16le",
+        str(destination),
+    ]
+    LOGGER.info("Time-stretching %s to %.2fx", source.name, tempo)
+    completed = subprocess.run(command, capture_output=True, text=True, check=False)
+    if cancel_event.is_set():
+        raise ProcessingCancelled()
+    if completed.returncode != 0:
+        detail = completed.stderr.strip()
+        raise MediaError(
+            "FFmpeg could not change the playback speed without changing pitch. "
+            + (detail[-1000:] if detail else "The audio may be corrupt.")
+        )
+
+
 def probe_media_sources(sources: list[Path]) -> MediaInfo:
     if not sources:
         raise MediaError("No media files were provided.")

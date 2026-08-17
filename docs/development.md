@@ -25,6 +25,7 @@ for how the token is resolved and stored.
 | Command | What it does |
 |---|---|
 | `python app.py` | The GUI |
+| `.\scripts\run_windows.ps1` | The GUI via the venv (PowerShell; clean Ctrl+C) |
 | `.\scripts\run_windows.bat` / `./scripts/run_linux.sh` | The GUI via the venv |
 | `python -m speaker_transcriber INPUT …` | The CLI |
 | `speaker-transcriber` / `speaker-transcriber-gui` | Console entry points after install |

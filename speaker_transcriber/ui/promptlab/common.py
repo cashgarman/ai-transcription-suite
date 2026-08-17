@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from speaker_transcriber.config import OLLAMA_CTX_CHOICES, format_ctx_label
+from speaker_transcriber.config import OLLAMA_CTX_CHOICES, SettingsStore, format_ctx_label
 from speaker_transcriber.prompts import SUMMARY_STYLES
 from speaker_transcriber.promptlab.settings import LabSettings, LabSettingsStore
 from speaker_transcriber.promptlab.store import LabStore
@@ -46,12 +46,14 @@ class LabContext(QObject):
         settings: LabSettings,
         settings_store: LabSettingsStore,
         runner: LabJobRunner,
+        app_settings_store: SettingsStore,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
         self.store = store
         self.settings = settings
         self.settings_store = settings_store
+        self.app_settings_store = app_settings_store
         self.runner = runner
         self.available_models: list[str] = []
 

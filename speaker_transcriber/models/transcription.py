@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import logging
-import os
-import sys
 import threading
 from pathlib import Path
 from typing import Callable
@@ -91,29 +89,6 @@ class Transcriber:
         model = None
         batched_model = None
         try:
-            from speaker_transcriber.debug_log import agent_log
-
-            venv_cudnn = (
-                Path(sys.prefix)
-                / "Lib"
-                / "site-packages"
-                / "nvidia"
-                / "cudnn"
-                / "bin"
-                / "cudnn_ops_infer64_8.dll"
-            )
-            agent_log(
-                "transcription.py:transcribe",
-                "loading whisper model",
-                {
-                    "device": options.device,
-                    "model": options.model,
-                    "cudnn_dll_venv_exists": venv_cudnn.exists(),
-                    "path_contains_cudnn": "nvidia\\cudnn\\bin"
-                    in os.environ.get("PATH", "").lower(),
-                },
-                "H4",
-            )
             try:
                 model = WhisperModel(
                     options.model,
@@ -121,12 +96,6 @@ class Transcriber:
                     compute_type=compute_type,
                 )
             except Exception as exc:
-                agent_log(
-                    "transcription.py:transcribe",
-                    "whisper model load failed",
-                    {"error_type": type(exc).__name__, "error": str(exc)[:300]},
-                    "H4",
-                )
                 message = str(exc).lower()
                 if "localentrynotfounderror" in message or "connection" in message:
                     raise RuntimeError(

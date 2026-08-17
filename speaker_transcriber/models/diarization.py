@@ -7,7 +7,6 @@ from pickle import UnpicklingError
 from pathlib import Path
 from typing import Callable
 
-from speaker_transcriber.debug_log import agent_log
 from speaker_transcriber.errors import AuthenticationError, ProcessingCancelled
 from speaker_transcriber.huggingface_compat import patch_hf_hub_use_auth_token
 from speaker_transcriber.huggingface_setup import (
@@ -74,12 +73,6 @@ class Diarizer:
         patch_hf_hub_use_auth_token()
         patch_torch_load_weights_only()
         patch_speechbrain_lazy_modules()
-        agent_log(
-            "diarization.py:diarize",
-            "starting diarization",
-            {"hf_token_present": True, "device": device},
-            "H4",
-        )
 
         pipeline = None
         try:
@@ -87,12 +80,6 @@ class Diarizer:
             try:
                 pipeline = self._load_pipeline(options.hf_token, options.diarization_model)
             except Exception as exc:
-                agent_log(
-                    "diarization.py:diarize",
-                    "pipeline load failed",
-                    {"error_type": type(exc).__name__, "error": str(exc)[:300]},
-                    "H4",
-                )
                 model_url = _model_url(options.diarization_model)
                 if _is_auth_failure(exc):
                     raise AuthenticationError(
@@ -154,16 +141,6 @@ class Diarizer:
                 len(segments),
                 len({segment.speaker for segment in segments}),
             )
-            agent_log(
-                "diarization.py:diarize",
-                "diarization complete",
-                {
-                    "segment_count": len(segments),
-                    "speaker_count": len({segment.speaker for segment in segments}),
-                    "sample_speakers": sorted({segment.speaker for segment in segments})[:5],
-                },
-                "H3",
-            )
             return segments
         finally:
             if pipeline is not None:
@@ -177,28 +154,12 @@ class Diarizer:
         last_error: Exception | None = None
         for attempt in range(1, max_attempts + 1):
             try:
-                agent_log(
-                    "diarization.py:_load_pipeline",
-                    "pipeline load attempt",
-                    {"attempt": attempt, "model_id": pipeline_id},
-                    "H6",
-                )
                 return Pipeline.from_pretrained(
                     pipeline_id,
                     use_auth_token=token,
                 )
             except Exception as exc:
                 last_error = exc
-                agent_log(
-                    "diarization.py:_load_pipeline",
-                    "pipeline load attempt failed",
-                    {
-                        "attempt": attempt,
-                        "error_type": type(exc).__name__,
-                        "error": str(exc)[:300],
-                    },
-                    "H6",
-                )
                 if attempt == max_attempts or not is_retryable_download_error(exc):
                     raise
                 delay_seconds = min(2**attempt, 30)

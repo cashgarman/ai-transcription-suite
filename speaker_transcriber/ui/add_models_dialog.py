@@ -149,6 +149,7 @@ class AddModelsDialog(QDialog):
         layout.addLayout(progress_row)
         layout.addLayout(buttons)
 
+        self._set_download_progress_active(False)
         self._refresh_disk()
         self._run_search()
 
@@ -167,6 +168,8 @@ class AddModelsDialog(QDialog):
             )
         if kind in {"whisper", "alignment"}:
             return "Downloads are stored in the Hugging Face cache."
+        if kind == "tts":
+            return "Piper voices are stored under SpeakerTranscriber in AppData."
         return "Downloads are stored in the Ollama models directory."
 
     def _schedule_search(self, _text: str = "") -> None:
@@ -304,6 +307,7 @@ class AddModelsDialog(QDialog):
             )
         if self._download_worker and self._download_worker.isRunning():
             return
+        self._set_download_progress_active(True)
         self.cancel_button.setEnabled(True)
         self.download_button.setEnabled(False)
         self._download_worker = CatalogDownloadWorker(self.provider, selected, self)
@@ -347,19 +351,33 @@ class AddModelsDialog(QDialog):
         self._populate_table()
 
     def _on_download_failed(self, message: str) -> None:
+        self._set_download_progress_active(False)
         self.status.setText(message)
         QMessageBox.warning(self, "Download failed", message)
         self.cancel_button.setEnabled(False)
         self._update_download_enabled()
 
     def _on_download_completed(self) -> None:
+        self._set_download_progress_active(False)
         self.cancel_button.setEnabled(False)
-        self.progress.setValue(0)
-        self.progress_label.setText("0%")
-        self.eta_label.setText("ETA —")
         self.status.setText("Download complete")
         self._update_download_enabled()
         self._refresh_disk()
+
+    def _set_download_progress_active(self, active: bool) -> None:
+        self.progress.setVisible(active)
+        self.progress_label.setVisible(active)
+        self.eta_label.setVisible(active)
+        if active:
+            self.progress.setValue(0)
+            self.progress.start()
+            self.progress_label.setText("0%")
+            self.eta_label.setText("ETA —")
+            return
+        self.progress.setValue(0)
+        self.progress.stop()
+        self.progress_label.clear()
+        self.eta_label.clear()
 
     def _refresh_disk(self) -> None:
         try:

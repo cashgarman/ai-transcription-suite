@@ -4,8 +4,6 @@ import os
 import sys
 from pathlib import Path
 
-from speaker_transcriber.debug_log import agent_log
-
 
 def _frozen_bundle_roots() -> list[Path]:
     roots: list[Path] = []
@@ -53,25 +51,7 @@ def configure_cuda_libraries() -> None:
     if os.name != "nt":
         return
 
-    base_site = Path(sys.base_prefix) / "Lib" / "site-packages"
-    venv_site = Path(sys.prefix) / "Lib" / "site-packages"
-    cudnn_dll_base = base_site / "nvidia" / "cudnn" / "bin" / "cudnn_ops_infer64_8.dll"
-    cudnn_dll_venv = venv_site / "nvidia" / "cudnn" / "bin" / "cudnn_ops_infer64_8.dll"
     found_dirs = _candidate_nvidia_bin_dirs()
-    agent_log(
-        "cuda_setup.py:configure_cuda_libraries",
-        "cuda library discovery",
-        {
-            "executable": sys.executable,
-            "prefix": sys.prefix,
-            "base_prefix": sys.base_prefix,
-            "found_dirs": [str(path) for path in found_dirs],
-            "cudnn_dll_base_exists": cudnn_dll_base.exists(),
-            "cudnn_dll_venv_exists": cudnn_dll_venv.exists(),
-            "path_head": os.environ.get("PATH", "")[:500],
-        },
-        "H2",
-    )
 
     for directory in found_dirs:
         path = str(directory)
@@ -82,13 +62,3 @@ def configure_cuda_libraries() -> None:
                 os.add_dll_directory(path)
             except OSError:
                 pass
-
-    agent_log(
-        "cuda_setup.py:configure_cuda_libraries",
-        "cuda library configuration complete",
-        {
-            "configured_dirs": [str(path) for path in found_dirs],
-            "path_contains_cudnn": "nvidia\\cudnn\\bin" in os.environ.get("PATH", "").lower(),
-        },
-        "H1",
-    )

@@ -8,6 +8,10 @@ from speaker_transcriber.pipeline.types import TranscriptResult
 from speaker_transcriber.ui.busy_spinner import BusySpinnerOverlay
 from speaker_transcriber.ui.text_search import TextSearchBar
 from speaker_transcriber.ui.transcript_heatmap import TranscriptTimelineHeatmap
+from speaker_transcriber.ui.transcript_tts_controller import (
+    TranscriptTtsController,
+    bind_transcript_playback_follow,
+)
 from speaker_transcriber.ui.transcript_view import TranscriptView
 
 
@@ -20,6 +24,10 @@ class TranscriptPanel(QWidget):
 
         self.search_bar = TextSearchBar("Search transcript…")
         layout.addWidget(self.search_bar)
+
+        self.tts = TranscriptTtsController()
+        self.tts_bar = self.tts.bar
+        layout.addWidget(self.tts)
 
         self._content_host = QWidget()
         self._content_host.setSizePolicy(
@@ -47,6 +55,7 @@ class TranscriptPanel(QWidget):
         self.search_bar.next_requested.connect(lambda: self._goto_search_match(1))
         self.search_bar.previous_requested.connect(lambda: self._goto_search_match(-1))
         self._bind_search_shortcuts()
+        bind_transcript_playback_follow(self.tts, self.transcript_view)
 
     def eventFilter(self, watched, event) -> bool:
         if event.type() == QEvent.Type.Resize:
@@ -61,6 +70,7 @@ class TranscriptPanel(QWidget):
         self._layout_content()
 
     def set_result(self, result: TranscriptResult | None) -> None:
+        self.tts.set_result(result)
         self.transcript_view.set_result(result)
         self.heatmap.set_result(result)
         self._sync_search_status()

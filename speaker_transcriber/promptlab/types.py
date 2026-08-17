@@ -12,7 +12,10 @@ import uuid
 from collections.abc import Iterable, Mapping
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Literal
+
+
+SpeakerGender = Literal["male", "female"]
 
 
 GROUNDED_MODE = "grounded"
@@ -113,6 +116,7 @@ class Participant:
     speaker_id: str
     name: str
     role: str
+    gender: SpeakerGender = "male"
     speaking_style: str = "plain"
     verbosity: float = 0.5
 
@@ -121,10 +125,14 @@ class Participant:
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> Participant:
+        gender = _text(data.get("gender"), "male").strip().lower()
+        if gender not in ("male", "female"):
+            gender = "male"
         return cls(
             speaker_id=_text(data.get("speaker_id")),
             name=_text(data.get("name")),
             role=_text(data.get("role")),
+            gender=gender,  # type: ignore[arg-type]
             speaking_style=_text(data.get("speaking_style"), "plain"),
             verbosity=_float(data.get("verbosity"), 0.5),
         )

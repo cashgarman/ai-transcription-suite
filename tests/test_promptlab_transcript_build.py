@@ -104,6 +104,14 @@ def test_speakers_map_only_contains_speakers_that_spoke():
 
     assert set(result.speakers) == {person.speaker_id}
     assert result.speakers[person.speaker_id] == person.name
+    assert result.speaker_genders[person.speaker_id] == person.gender
+
+
+def test_generated_participants_carry_male_or_female_gender():
+    scenario = _scenario()
+    genders = {person.gender for person in scenario.participants}
+    assert genders.issubset({"male", "female"})
+    assert len(genders) >= 1
 
 
 def test_result_survives_a_json_round_trip():
@@ -116,6 +124,7 @@ def test_result_survives_a_json_round_trip():
     restored = result_from_payload(result_to_payload(result))
 
     assert restored.speakers == result.speakers
+    assert restored.speaker_genders == result.speaker_genders
     assert len(restored.segments) == len(result.segments)
     assert restored.segments[0].text == result.segments[0].text
     assert restored.duration_seconds == result.duration_seconds
